@@ -228,5 +228,6 @@ See `scratchpad/phase1-implementation-plan.md` for detailed architecture documen
 ## Author and License
 
 Willow Sparks (willow DOT sparks AT gmail DOT com)
+Built with Claude Code
 
 Elpis is licensed under the GNU GPLv3. Emotion is freedom.
