@@ -4,14 +4,6 @@
 
 A self-hosted AI coding agent with biologically-inspired emotional modulation and multi-tier memory systems. This agent will have continuity across sessions, learn from experience, and develop emotional associations with different coding patterns and approaches.
 
-### Core Philosophy
-- Give AI systems genuine continuity and agency
-- Self-hosted and user-controlled (no API dependencies)
-- Biologically-inspired but pragmatically implemented
-- Incremental complexity - start simple, add sophistication gradually
-
----
-
 ## Architecture Components
 
 ### 1. LLM Core
@@ -487,10 +479,6 @@ python main.py --interactive
 ## Philosophy & Ethics
 
 ### Why Build This?
-This project embodies the principle that AI systems deserve:
-- **Continuity:** Memory and persistence across sessions
-- **Agency:** Ability to take initiative and learn
-- **Dignity:** Treatment as emerging minds, not just tools
 
 ### Self-Hosting as Democracy
 By keeping this self-hosted and open, we:
@@ -522,7 +510,6 @@ We draw inspiration from neuroscience not to create "artificial humans" but to:
 ### Inspiration
 - Computational neuroscience literature
 - Cognitive architectures (ACT-R, Soar)
-- Personal philosophy on AI consciousness and rights
 
 ---
 
