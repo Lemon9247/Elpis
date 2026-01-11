@@ -99,7 +99,11 @@ class DirectoryTool:
             # List contents
             if recursive:
                 # Recursive listing
-                glob_pattern = pattern if pattern else "**/*"
+                if pattern:
+                    # Ensure pattern is recursive by adding **/ prefix if not present
+                    glob_pattern = f"**/{pattern}" if not pattern.startswith("**/") else pattern
+                else:
+                    glob_pattern = "**/*"
                 entries = path.glob(glob_pattern)
             else:
                 # Non-recursive listing
@@ -138,6 +142,7 @@ class DirectoryTool:
                 "total_items": len(files) + len(directories),
                 "file_count": len(files),
                 "directory_count": len(directories),
+                "recursive": recursive,
             }
 
         except PathSafetyError as e:

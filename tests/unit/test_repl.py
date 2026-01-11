@@ -162,7 +162,7 @@ def hello():
         mock_agent.process.return_value = "Response from agent"
 
         # Mock the prompt session to provide input and then EOF
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = ["Hello agent", EOFError()]
 
             # Run the REPL
@@ -174,7 +174,7 @@ def hello():
     @pytest.mark.asyncio
     async def test_run_with_empty_input(self, repl, mock_agent):
         """Test REPL skips empty input."""
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = ["", "  ", EOFError()]
 
             await repl.run()
@@ -185,7 +185,7 @@ def hello():
     @pytest.mark.asyncio
     async def test_run_with_special_command(self, repl, mock_agent):
         """Test REPL handles special commands."""
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = ["/clear", EOFError()]
 
             await repl.run()
@@ -197,7 +197,7 @@ def hello():
     @pytest.mark.asyncio
     async def test_run_with_keyboard_interrupt(self, repl, mock_agent):
         """Test REPL handles Ctrl+C gracefully."""
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = [KeyboardInterrupt(), EOFError()]
 
             # Should not raise exception
@@ -208,7 +208,7 @@ def hello():
         """Test REPL handles unexpected exceptions."""
         mock_agent.process.side_effect = Exception("Unexpected error")
 
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = ["Test input", EOFError()]
 
             # Should not raise exception, should handle it
@@ -217,7 +217,7 @@ def hello():
     @pytest.mark.asyncio
     async def test_run_exit_command_breaks_loop(self, repl, mock_agent):
         """Test that /exit command breaks the REPL loop."""
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = ["/exit"]
 
             # Run should complete without EOF
@@ -239,7 +239,7 @@ def hello():
         """Test REPL processes multiple user inputs in sequence."""
         mock_agent.process.return_value = "Response"
 
-        with patch.object(repl.session, "prompt_async") as mock_prompt:
+        with patch.object(repl.session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
             mock_prompt.side_effect = [
                 "First input",
                 "Second input",

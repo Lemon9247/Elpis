@@ -142,12 +142,20 @@ class TestAgentOrchestrator:
         assert mock_tools.execute_tool_call.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_max_iterations_limit(self, orchestrator, mock_llm):
+    async def test_max_iterations_limit(self, orchestrator, mock_llm, mock_tools):
         """Test that ReAct loop stops at max iterations."""
         # Setup: Always return tool calls (infinite loop scenario)
         mock_llm.function_call.return_value = [
             {"id": "call_x", "function": {"name": "test", "arguments": "{}"}}
         ]
+
+        # Mock tool execution to return success
+        mock_tools.execute_tool_call.return_value = {
+            "tool_call_id": "call_x",
+            "success": True,
+            "result": {"success": True},
+            "duration_ms": 5.0,
+        }
 
         # Execute
         response = await orchestrator.process("Test infinite loop")
@@ -322,5 +330,8 @@ class TestAgentOrchestrator:
 
         # Assert: Should handle exception and convert to error result
         assert response == "Recovered from error"
-        # The exception should be in the tool results
-        assert any("error" in msg.get("content", "").lower() for msg in orchestrator.message_history)
+        # The exception should be in the tool results (check messages with content)
+        messages_with_content = [
+            msg for msg in orchestrator.message_history if msg.get("content") is not None
+        ]
+        assert any("error" in msg["content"].lower() for msg in messages_with_content)

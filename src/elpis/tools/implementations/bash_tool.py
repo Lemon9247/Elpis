@@ -122,7 +122,7 @@ class BashTool:
         except subprocess.TimeoutExpired:
             return {
                 'success': False,
-                'error': f"Command timed out after {self.settings.tools.max_bash_timeout} seconds",
+                'error': f"Command timeout after {self.settings.tools.max_bash_timeout} seconds",
                 'command': command
             }
         except Exception as e:
