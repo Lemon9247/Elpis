@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# Logs
+logs/*.log
+*.log
+
+# Models (large files)
+data/models/*.gguf
+data/models/*.bin
+data/models/*.safetensors
+
+# Memory databases (will be generated)
+data/memory_db/
+memory_raw/
+
+# Local configuration
+configs/config.local.toml
+.env
+
+# REPL history
+.elpis_history
+
+# Backups
+*.bak
+
+# Claude Code plans (user-specific)
+.claude/plans/

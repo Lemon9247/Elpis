@@ -1,0 +1,106 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elpis"
+version = "0.1.0"
+description = "Emotional coding agent with biologically-inspired memory and emotional modulation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0"}
+authors = [{name = "Willow Sparks", email = "willow.sparks@gmail.com"}]
+keywords = ["ai", "coding", "llm", "memory", "emotion", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "llama-cpp-python>=0.2.0",      # LLM inference (CPU/CUDA/ROCm)
+    "pydantic>=2.0",                # Data validation
+    "pydantic-settings>=2.0",       # Configuration
+    "loguru>=0.7.0",                # Logging
+    "prompt-toolkit>=3.0.52",       # Async REPL
+    "rich>=13.0",                   # Output formatting
+    "click>=8.0",                   # CLI framework
+    "huggingface-hub>=0.20.0",      # Model downloads
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1.0",
+    "mypy>=1.5",
+    "pre-commit>=3.4",
+]
+
+cuda = [
+    # Install with: CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python
+]
+
+rocm = [
+    # Install with: CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install llama-cpp-python
+]
+
+[project.scripts]
+elpis = "elpis.cli:main"
+
+[tool.setuptools]
+packages = ["elpis"]
+
+[tool.setuptools.package-dir]
+elpis = "src/elpis"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=src/elpis --cov-report=term-missing --cov-report=html"
+asyncio_mode = "auto"
+markers = [
+    "unit: unit tests",
+    "integration: integration tests",
+    "slow: slow tests",
+]
+
+[tool.coverage.run]
+source = ["src/elpis"]
+omit = ["*/tests/*", "*/test_*.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+select = ["E", "F", "I", "N", "UP", "W", "B", "A", "C4", "RUF"]
+ignore = ["E501"]  # Line length handled by formatter
+
+[tool.ruff.isort]
+known-first-party = ["elpis"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*"]
+ignore_missing_imports = true
