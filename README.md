@@ -1,4 +1,4 @@
-# Elpis
+![Elpis Banner](assets/elpis-inline.png)
 
 Do robots dream of electric sheep?
 
