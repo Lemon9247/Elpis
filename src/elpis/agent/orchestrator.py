@@ -90,6 +90,7 @@ class AgentOrchestrator:
                 tool_calls = await self.llm.function_call(
                     messages=messages, tools=self.tools.get_tool_schemas()
                 )
+                logger.debug(f"tool_calls is {tool_calls}")
 
                 if tool_calls:
                     # OBSERVE: Execute tools concurrently
