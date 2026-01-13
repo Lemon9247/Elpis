@@ -70,6 +70,32 @@ New method `_can_use_idle_tools()` checks:
 - User input cancels idle task immediately
 - Ensures responsive interaction during dream state
 
+### 7. edit_file Tool Confusion
+**Problem:** Psyche tried to use `edit_file` on non-existent files, causing failures when trying to create new files (e.g., petting zoo project).
+
+**Fix:** Improved tool description in `tool_engine.py`:
+- Clearly states file MUST already exist
+- Directs LLM to use `create_file` for new files
+- Emphasizes `old_string` must match EXACTLY and be unique
+
+### 8. Streaming Never Ending During Tool Iterations
+**Problem:** During ReAct tool iterations, tokens kept streaming without end. `on_response` was only called after final response, so `end_stream()` never triggered between tool calls.
+
+**Fix:** Call `on_response` after EACH LLM generation:
+- Stream properly ends before tool execution begins
+- New stream starts automatically for next generation
+- User sees distinct responses instead of endless stream
+
+### 9. Psyche Continues Speaking Without Accepting Input
+**Problem:** After responding to user, Psyche would start idle thinking almost immediately (30s default), appearing to "continue speaking".
+
+**Fix:** Added post-interaction delay in `ServerConfig`:
+```python
+post_interaction_delay: float = 60.0  # Wait 60s after user speaks
+```
+
+New method `_can_start_idle_thinking()` checks time since last user interaction before allowing idle thoughts to begin.
+
 ## Files Modified
 
 | File | Changes |
@@ -83,7 +109,8 @@ New method `_can_use_idle_tools()` checks:
 | `src/psyche/cli.py` | Early logging setup, stderr redirect |
 | `src/psyche/mcp/client.py` | Added quiet param, set ELPIS_QUIET env |
 | `src/elpis/server.py` | Check ELPIS_QUIET for logging destination |
-| `src/psyche/memory/server.py` | Rate limiting + async loop fix |
+| `src/psyche/memory/server.py` | Rate limiting, async loop, post-interaction delay, stream fix |
+| `src/psyche/tools/tool_engine.py` | Improved edit_file description |
 
 ## Commits
 
@@ -93,6 +120,8 @@ New method `_can_use_idle_tools()` checks:
 4. `5afa1a9` - Add ELPIS_QUIET env var to suppress server logging in TUI mode
 5. `801fc44` - Add rate limiting for tool use during idle/dream state
 6. `525ab54` - Fix async inference loop to not block on idle thinking
+7. `fc80995` - Add session log for UI debugging work
+8. `9286bd4` - Fix streaming and tool use issues
 
 ## Test Results
 
@@ -131,12 +160,48 @@ Cooldown elapsed: idle tools re-enabled
 │           └─ idle done → process result │
 │     NO  → wait_for(input, timeout)      │
 │           ├─ input arrives → process    │
-│           └─ timeout → start idle task  │
+│           └─ timeout → check delays     │
+│                 ├─ post_interaction OK? │
+│                 │   YES → start idle    │
+│                 │   NO  → loop again    │
 └─────────────────────────────────────────┘
 ```
 
+### ReAct Loop with Stream Completion
+```
+User sends message
+    │
+    ▼
+_process_user_input()
+    │
+    ├─► Generate response (stream tokens via on_token)
+    │         │
+    │         ▼
+    │   Tool call found?
+    │         │
+    │    YES  │  NO
+    │    ▼    │  ▼
+    │   on_response() ◄──┘
+    │   (ends stream)
+    │         │
+    │    YES  │
+    │    ▼    │
+    │   Execute tool
+    │         │
+    │    Loop back to generate
+    │         │
+    └─────────┘
+```
+
+## Outcome
+
+Psyche successfully created her petting zoo project (`petting_zoo.py`, `sheep_class.py`) after the fixes were applied, demonstrating that the file tools now work correctly.
+
 ## Next Steps
 
-- Test full flow with actual LLM to verify all fixes work end-to-end
+- Continue testing with actual LLM usage
 - Consider merging branch to main when stable
-- Fine-tune rate limiting values based on usage patterns
+- Fine-tune timing values based on user experience:
+  - `post_interaction_delay` (currently 60s)
+  - `idle_tool_cooldown_seconds` (currently 300s)
+  - `startup_warmup_seconds` (currently 120s)
