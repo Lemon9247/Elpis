@@ -75,6 +75,9 @@ class ServerConfig:
     startup_warmup_seconds: float = 120.0  # No tools for first 2 minutes after startup
     idle_tool_cooldown_seconds: float = 300.0  # Minimum seconds between idle tool uses (5 min)
 
+    # Post-interaction delay before idle thinking resumes
+    post_interaction_delay: float = 60.0  # Wait 60s after user interaction before idle thoughts
+
 
 class MemoryServer:
     """
@@ -124,10 +127,11 @@ class MemoryServer:
         self._input_queue: asyncio.Queue[str] = asyncio.Queue()
         self._running = False
 
-        # Track timing for idle tool rate limiting
+        # Track timing for idle tool rate limiting and post-interaction delay
         import time
         self._startup_time: float = time.time()
         self._last_idle_tool_use: float = 0.0  # Never used yet
+        self._last_user_interaction: float = 0.0  # Track last user input time
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -285,8 +289,10 @@ Keep responses helpful and conversational."""
                         await self._process_user_input(user_input)
 
                     except asyncio.TimeoutError:
-                        # No user input - start idle thinking as background task
-                        idle_task = asyncio.create_task(self._generate_idle_thought())
+                        # No user input - check if we should start idle thinking
+                        if self._can_start_idle_thinking():
+                            idle_task = asyncio.create_task(self._generate_idle_thought())
+                        # If not allowed yet, loop will continue waiting for input
 
             except asyncio.CancelledError:
                 if idle_task:
@@ -305,6 +311,9 @@ Keep responses helpful and conversational."""
 
     async def _process_user_input(self, text: str) -> None:
         """Process user input with ReAct loop for tool execution."""
+        import time
+        self._last_user_interaction = time.time()  # Track interaction time
+
         self._state = ServerState.THINKING
         logger.debug(f"Processing user input: {text[:50]}...")
 
@@ -337,6 +346,10 @@ Keep responses helpful and conversational."""
                 # Found a tool call - execute it
                 self._state = ServerState.PROCESSING_TOOLS
                 logger.debug(f"Parsed tool call: {tool_call.get('name')}")
+
+                # Signal end of this generation (so UI can end stream before tool runs)
+                if self.on_response:
+                    self.on_response(response_text)
 
                 # Add assistant's tool call to context
                 self._compactor.add_message(create_message("assistant", response_text))
@@ -479,6 +492,30 @@ Keep responses helpful and conversational."""
 
             # Trigger frustration emotion
             await self.client.update_emotion("frustration", intensity=0.5)
+
+    def _can_start_idle_thinking(self) -> bool:
+        """
+        Check if idle thinking should start now.
+
+        Idle thinking is delayed after user interactions to avoid
+        appearing to "continue speaking" without accepting input.
+
+        Returns:
+            True if idle thinking can start, False otherwise
+        """
+        import time
+        now = time.time()
+
+        # Check if enough time has passed since last user interaction
+        time_since_interaction = now - self._last_user_interaction
+        if time_since_interaction < self.config.post_interaction_delay:
+            logger.debug(
+                f"Idle thinking delayed: post-interaction cooldown "
+                f"({time_since_interaction:.0f}s / {self.config.post_interaction_delay:.0f}s)"
+            )
+            return False
+
+        return True
 
     def _can_use_idle_tools(self) -> bool:
         """

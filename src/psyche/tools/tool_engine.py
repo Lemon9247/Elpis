@@ -117,17 +117,21 @@ class ToolEngine:
         # Register edit_file
         self.tools["edit_file"] = ToolDefinition(
             name="edit_file",
-            description="Edit an existing file by replacing old_string with new_string. Creates a backup.",
+            description=(
+                "Edit an EXISTING file by replacing old_string with new_string. "
+                "IMPORTANT: The file must already exist - use create_file for new files. "
+                "The old_string must match EXACTLY and be unique in the file. Creates a backup."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to file (relative to workspace or absolute)",
+                        "description": "Path to existing file (relative to workspace or absolute)",
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "The exact text to find and replace (must be unique in file)",
+                        "description": "The EXACT text to find and replace (must exist and be unique in file)",
                     },
                     "new_string": {
                         "type": "string",
