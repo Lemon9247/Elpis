@@ -5,7 +5,8 @@ from pydantic import ValidationError
 from psyche.tools.tool_definitions import (
     ToolInput,
     ReadFileInput,
-    WriteFileInput,
+    CreateFileInput,
+    EditFileInput,
     ExecuteBashInput,
     SearchCodebaseInput,
     ListDirectoryInput,
@@ -50,21 +51,26 @@ class TestReadFileInput:
         with pytest.raises(ValidationError):
             ReadFileInput(file_path='   ')
 
+    def test_max_lines_zero_uses_default(self):
+        """Test that max_lines=0 uses the default value."""
+        input_data = ReadFileInput(file_path='test.txt', max_lines=0)
+        assert input_data.max_lines == 2000
+
     def test_max_lines_out_of_range(self):
         """Test that max_lines outside valid range is rejected."""
         with pytest.raises(ValidationError):
-            ReadFileInput(file_path='test.txt', max_lines=0)
+            ReadFileInput(file_path='test.txt', max_lines=-1)
 
         with pytest.raises(ValidationError):
             ReadFileInput(file_path='test.txt', max_lines=100001)
 
 
-class TestWriteFileInput:
-    """Test WriteFileInput model."""
+class TestCreateFileInput:
+    """Test CreateFileInput model."""
 
     def test_valid_input(self):
-        """Test valid write file input."""
-        input_data = WriteFileInput(
+        """Test valid create file input."""
+        input_data = CreateFileInput(
             file_path='test.txt',
             content='Hello, world!',
             create_dirs=False
@@ -75,23 +81,58 @@ class TestWriteFileInput:
 
     def test_default_create_dirs(self):
         """Test default create_dirs value."""
-        input_data = WriteFileInput(file_path='test.txt', content='content')
+        input_data = CreateFileInput(file_path='test.txt', content='content')
         assert input_data.create_dirs is True
 
     def test_null_byte_in_path(self):
         """Test that null bytes in path are rejected."""
         with pytest.raises(ValidationError):
-            WriteFileInput(file_path='test\x00.txt', content='content')
+            CreateFileInput(file_path='test\x00.txt', content='content')
 
     def test_empty_path(self):
         """Test that empty path is rejected."""
         with pytest.raises(ValidationError):
-            WriteFileInput(file_path='', content='content')
+            CreateFileInput(file_path='', content='content')
 
     def test_empty_content(self):
         """Test that empty content is allowed."""
-        input_data = WriteFileInput(file_path='test.txt', content='')
+        input_data = CreateFileInput(file_path='test.txt', content='')
         assert input_data.content == ''
+
+
+class TestEditFileInput:
+    """Test EditFileInput model."""
+
+    def test_valid_input(self):
+        """Test valid edit file input."""
+        input_data = EditFileInput(
+            file_path='test.txt',
+            old_string='old text',
+            new_string='new text'
+        )
+        assert input_data.file_path == 'test.txt'
+        assert input_data.old_string == 'old text'
+        assert input_data.new_string == 'new text'
+
+    def test_null_byte_in_path(self):
+        """Test that null bytes in path are rejected."""
+        with pytest.raises(ValidationError):
+            EditFileInput(file_path='test\x00.txt', old_string='old', new_string='new')
+
+    def test_empty_path(self):
+        """Test that empty path is rejected."""
+        with pytest.raises(ValidationError):
+            EditFileInput(file_path='', old_string='old', new_string='new')
+
+    def test_empty_old_string(self):
+        """Test that empty old_string is rejected."""
+        with pytest.raises(ValidationError):
+            EditFileInput(file_path='test.txt', old_string='', new_string='new')
+
+    def test_empty_new_string(self):
+        """Test that empty new_string is allowed (for deletion)."""
+        input_data = EditFileInput(file_path='test.txt', old_string='old', new_string='')
+        assert input_data.new_string == ''
 
 
 class TestExecuteBashInput:

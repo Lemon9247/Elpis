@@ -14,9 +14,9 @@ class ReadFileInput(ToolInput):
     file_path: str = Field(description="Path to file (relative to workspace or absolute)")
     max_lines: Optional[int] = Field(
         default=2000,
-        ge=1,
+        ge=0,
         le=100000,
-        description="Maximum number of lines to read"
+        description="Maximum number of lines to read (0 or None = default 2000)"
     )
 
     @field_validator('file_path')
@@ -29,11 +29,19 @@ class ReadFileInput(ToolInput):
             raise ValueError("Path cannot be empty")
         return v
 
+    @field_validator('max_lines')
+    @classmethod
+    def validate_max_lines(cls, v: Optional[int]) -> int:
+        """Convert 0 or None to default value."""
+        if v is None or v == 0:
+            return 2000
+        return v
 
-class WriteFileInput(ToolInput):
-    """Input model for write_file tool."""
+
+class CreateFileInput(ToolInput):
+    """Input model for create_file tool."""
     file_path: str = Field(description="Path to file (relative to workspace or absolute)")
-    content: str = Field(description="Content to write to file")
+    content: str = Field(description="Content to write to the new file")
     create_dirs: bool = Field(
         default=True,
         description="Create parent directories if they don't exist"
@@ -47,6 +55,31 @@ class WriteFileInput(ToolInput):
             raise ValueError("Null bytes not allowed in path")
         if not v.strip():
             raise ValueError("Path cannot be empty")
+        return v
+
+
+class EditFileInput(ToolInput):
+    """Input model for edit_file tool."""
+    file_path: str = Field(description="Path to file (relative to workspace or absolute)")
+    old_string: str = Field(description="The exact text to find and replace")
+    new_string: str = Field(description="The text to replace it with")
+
+    @field_validator('file_path')
+    @classmethod
+    def validate_path(cls, v: str) -> str:
+        """Validate file path doesn't contain null bytes."""
+        if '\x00' in v:
+            raise ValueError("Null bytes not allowed in path")
+        if not v.strip():
+            raise ValueError("Path cannot be empty")
+        return v
+
+    @field_validator('old_string')
+    @classmethod
+    def validate_old_string(cls, v: str) -> str:
+        """Validate old_string is not empty."""
+        if not v:
+            raise ValueError("old_string cannot be empty")
         return v
 
 

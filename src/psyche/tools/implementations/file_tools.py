@@ -138,14 +138,14 @@ class FileTools:
                 'error': f"Error reading file: {str(e)}"
             }
 
-    async def write_file(
+    async def create_file(
         self,
         file_path: str,
         content: str,
         create_dirs: bool = True
     ) -> Dict[str, Any]:
         """
-        Write file contents asynchronously.
+        Create a new file asynchronously. Fails if file already exists.
 
         Args:
             file_path: Path to file (relative to workspace or absolute)
@@ -156,20 +156,20 @@ class FileTools:
             Dictionary with success status and either result or error
         """
         return await asyncio.to_thread(
-            self._write_file_sync,
+            self._create_file_sync,
             file_path,
             content,
             create_dirs
         )
 
-    def _write_file_sync(
+    def _create_file_sync(
         self,
         file_path: str,
         content: str,
         create_dirs: bool
     ) -> Dict[str, Any]:
         """
-        Synchronous file write implementation.
+        Synchronous file creation implementation.
 
         Args:
             file_path: Path to file
@@ -183,43 +183,153 @@ class FileTools:
             # Sanitize path
             path = self._sanitize_path(file_path)
 
+            # Fail if file already exists
+            if path.exists():
+                return {
+                    'success': False,
+                    'error': f"File already exists: {path}. Use edit_file to modify existing files."
+                }
+
             # Create parent directories if requested
             if create_dirs and not path.parent.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Backup existing file
-            backup_path = None
-            if path.exists():
-                backup_path = path.with_suffix(path.suffix + '.bak')
-                # If backup already exists, remove it
-                if backup_path.exists():
-                    backup_path.unlink()
-                # Rename current file to backup
-                path.rename(backup_path)
+            # Write new content
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            size_bytes = len(content.encode('utf-8'))
+
+            return {
+                'success': True,
+                'file_path': str(path),
+                'size_bytes': size_bytes,
+                'lines_written': content.count('\n') + 1 if content else 0
+            }
+
+        except PathSafetyError as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Error creating file: {str(e)}"
+            }
+
+    async def edit_file(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str
+    ) -> Dict[str, Any]:
+        """
+        Edit an existing file by replacing old_string with new_string.
+
+        Args:
+            file_path: Path to file (relative to workspace or absolute)
+            old_string: The exact text to find and replace
+            new_string: The text to replace it with
+
+        Returns:
+            Dictionary with success status and either result or error
+        """
+        return await asyncio.to_thread(
+            self._edit_file_sync,
+            file_path,
+            old_string,
+            new_string
+        )
+
+    def _edit_file_sync(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str
+    ) -> Dict[str, Any]:
+        """
+        Synchronous file edit implementation.
+
+        Args:
+            file_path: Path to file
+            old_string: Text to find
+            new_string: Text to replace with
+
+        Returns:
+            Dictionary with success, file_path, and details
+        """
+        try:
+            # Sanitize path
+            path = self._sanitize_path(file_path)
+
+            # File must exist
+            if not path.exists():
+                return {
+                    'success': False,
+                    'error': f"File not found: {path}. Use create_file to create new files."
+                }
+
+            if not path.is_file():
+                return {
+                    'success': False,
+                    'error': f"Path is not a file: {path}"
+                }
+
+            # Read current content
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+
+            # Check if old_string exists
+            if old_string not in content:
+                return {
+                    'success': False,
+                    'error': f"old_string not found in file. Make sure the text matches exactly."
+                }
+
+            # Check for uniqueness
+            count = content.count(old_string)
+            if count > 1:
+                return {
+                    'success': False,
+                    'error': f"old_string appears {count} times in file. Provide more context to make it unique."
+                }
+
+            # Create backup
+            backup_path = path.with_suffix(path.suffix + '.bak')
+            if backup_path.exists():
+                backup_path.unlink()
+
+            # Copy current file to backup
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            # Perform replacement
+            new_content = content.replace(old_string, new_string, 1)
 
             # Write new content
             try:
                 with open(path, 'w', encoding='utf-8') as f:
-                    f.write(content)
+                    f.write(new_content)
 
-                size_bytes = len(content.encode('utf-8'))
+                size_bytes = len(new_content.encode('utf-8'))
 
-                result = {
+                return {
                     'success': True,
                     'file_path': str(path),
                     'size_bytes': size_bytes,
-                    'lines_written': content.count('\n') + 1 if content else 0
+                    'backup_created': str(backup_path),
+                    'chars_replaced': len(old_string),
+                    'chars_inserted': len(new_string)
                 }
-
-                if backup_path:
-                    result['backup_created'] = str(backup_path)
-
-                return result
 
             except Exception as write_error:
                 # Restore backup if write failed
-                if backup_path and backup_path.exists():
-                    backup_path.rename(path)
+                if backup_path.exists():
+                    with open(backup_path, 'r', encoding='utf-8') as f:
+                        original = f.read()
+                    with open(path, 'w', encoding='utf-8') as f:
+                        f.write(original)
                 raise write_error
 
         except PathSafetyError as e:
@@ -230,5 +340,5 @@ class FileTools:
         except Exception as e:
             return {
                 'success': False,
-                'error': f"Error writing file: {str(e)}"
+                'error': f"Error editing file: {str(e)}"
             }

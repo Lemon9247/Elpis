@@ -50,7 +50,8 @@ class TestToolEngineInitialization:
         """Test that all expected tools are registered."""
         expected_tools = [
             'read_file',
-            'write_file',
+            'create_file',
+            'edit_file',
             'execute_bash',
             'search_codebase',
             'list_directory'
@@ -68,7 +69,7 @@ class TestGetToolSchemas:
         schemas = tool_engine.get_tool_schemas()
 
         assert isinstance(schemas, list)
-        assert len(schemas) == 5  # We have 5 tools
+        assert len(schemas) == 6  # We have 6 tools
 
         # Check schema format
         for schema in schemas:
@@ -118,13 +119,13 @@ class TestExecuteToolCall:
         assert 'duration_ms' in result
 
     @pytest.mark.asyncio
-    async def test_execute_write_file(self, tool_engine, workspace_dir):
-        """Test executing write_file tool."""
+    async def test_execute_create_file(self, tool_engine, workspace_dir):
+        """Test executing create_file tool."""
         tool_call = {
             'id': 'call_456',
             'type': 'function',
             'function': {
-                'name': 'write_file',
+                'name': 'create_file',
                 'arguments': json.dumps({
                     'file_path': 'output.txt',
                     'content': 'Test content'
@@ -141,6 +142,39 @@ class TestExecuteToolCall:
         output_file = workspace_dir / 'output.txt'
         assert output_file.exists()
         assert output_file.read_text() == 'Test content'
+
+    @pytest.mark.asyncio
+    async def test_execute_edit_file(self, tool_engine, workspace_dir):
+        """Test executing edit_file tool."""
+        # Create initial file
+        test_file = workspace_dir / 'to_edit.txt'
+        test_file.write_text('Hello, World!')
+
+        tool_call = {
+            'id': 'call_edit',
+            'type': 'function',
+            'function': {
+                'name': 'edit_file',
+                'arguments': json.dumps({
+                    'file_path': 'to_edit.txt',
+                    'old_string': 'World',
+                    'new_string': 'Universe'
+                })
+            }
+        }
+
+        result = await tool_engine.execute_tool_call(tool_call)
+
+        assert result['success'] is True
+        assert result['tool_call_id'] == 'call_edit'
+
+        # Verify file was edited
+        assert test_file.read_text() == 'Hello, Universe!'
+
+        # Verify backup was created
+        backup_file = workspace_dir / 'to_edit.txt.bak'
+        assert backup_file.exists()
+        assert backup_file.read_text() == 'Hello, World!'
 
     @pytest.mark.asyncio
     async def test_execute_bash_command(self, tool_engine):

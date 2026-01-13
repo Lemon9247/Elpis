@@ -134,13 +134,13 @@ class TestReadFile:
         assert 'too large' in result['error'].lower()
 
 
-class TestWriteFile:
-    """Test write_file functionality."""
+class TestCreateFile:
+    """Test create_file functionality."""
 
     @pytest.mark.asyncio
-    async def test_write_file_success(self, file_tools, workspace_dir):
-        """Test successful file write."""
-        result = await file_tools.write_file('test.txt', 'Hello, World!')
+    async def test_create_file_success(self, file_tools, workspace_dir):
+        """Test successful file creation."""
+        result = await file_tools.create_file('test.txt', 'Hello, World!')
 
         assert result['success'] is True
         assert result['size_bytes'] > 0
@@ -151,9 +151,9 @@ class TestWriteFile:
         assert test_file.read_text() == 'Hello, World!'
 
     @pytest.mark.asyncio
-    async def test_write_file_creates_directories(self, file_tools, workspace_dir):
-        """Test writing file with create_dirs creates parent directories."""
-        result = await file_tools.write_file(
+    async def test_create_file_creates_directories(self, file_tools, workspace_dir):
+        """Test creating file with create_dirs creates parent directories."""
+        result = await file_tools.create_file(
             'subdir/nested/test.txt',
             'content',
             create_dirs=True
@@ -167,9 +167,9 @@ class TestWriteFile:
         assert test_file.read_text() == 'content'
 
     @pytest.mark.asyncio
-    async def test_write_file_without_create_dirs(self, file_tools, workspace_dir):
-        """Test writing file without create_dirs fails if parent doesn't exist."""
-        result = await file_tools.write_file(
+    async def test_create_file_without_create_dirs(self, file_tools, workspace_dir):
+        """Test creating file without create_dirs fails if parent doesn't exist."""
+        result = await file_tools.create_file(
             'nonexistent/test.txt',
             'content',
             create_dirs=False
@@ -178,38 +178,33 @@ class TestWriteFile:
         assert result['success'] is False
 
     @pytest.mark.asyncio
-    async def test_write_file_creates_backup(self, file_tools, workspace_dir):
-        """Test writing file creates backup of existing file."""
+    async def test_create_file_fails_if_exists(self, file_tools, workspace_dir):
+        """Test that create_file fails if file already exists."""
         # Create original file
         test_file = workspace_dir / 'test.txt'
         test_file.write_text('original content')
 
-        # Overwrite file
-        result = await file_tools.write_file('test.txt', 'new content')
+        # Try to create same file
+        result = await file_tools.create_file('test.txt', 'new content')
 
-        assert result['success'] is True
-        assert 'backup_created' in result
+        assert result['success'] is False
+        assert 'already exists' in result['error'].lower()
 
-        # Verify new content
-        assert test_file.read_text() == 'new content'
-
-        # Verify backup exists
-        backup_file = workspace_dir / 'test.txt.bak'
-        assert backup_file.exists()
-        assert backup_file.read_text() == 'original content'
+        # Verify original content unchanged
+        assert test_file.read_text() == 'original content'
 
     @pytest.mark.asyncio
-    async def test_write_file_outside_workspace(self, file_tools):
-        """Test writing file outside workspace returns error."""
-        result = await file_tools.write_file('/tmp/test.txt', 'content')
+    async def test_create_file_outside_workspace(self, file_tools):
+        """Test creating file outside workspace returns error."""
+        result = await file_tools.create_file('/tmp/test.txt', 'content')
 
         assert result['success'] is False
         assert 'outside workspace' in result['error'].lower()
 
     @pytest.mark.asyncio
-    async def test_write_empty_content(self, file_tools, workspace_dir):
-        """Test writing empty content is allowed."""
-        result = await file_tools.write_file('empty.txt', '')
+    async def test_create_empty_content(self, file_tools, workspace_dir):
+        """Test creating file with empty content is allowed."""
+        result = await file_tools.create_file('empty.txt', '')
 
         assert result['success'] is True
 
@@ -218,12 +213,114 @@ class TestWriteFile:
         assert test_file.read_text() == ''
 
     @pytest.mark.asyncio
-    async def test_write_file_unicode_content(self, file_tools, workspace_dir):
-        """Test writing file with unicode content."""
+    async def test_create_file_unicode_content(self, file_tools, workspace_dir):
+        """Test creating file with unicode content."""
         unicode_content = 'Hello 世界 🌍'
-        result = await file_tools.write_file('unicode.txt', unicode_content)
+        result = await file_tools.create_file('unicode.txt', unicode_content)
 
         assert result['success'] is True
 
         test_file = workspace_dir / 'unicode.txt'
         assert test_file.read_text() == unicode_content
+
+
+class TestEditFile:
+    """Test edit_file functionality."""
+
+    @pytest.mark.asyncio
+    async def test_edit_file_success(self, file_tools, workspace_dir):
+        """Test successful file edit."""
+        # Create test file
+        test_file = workspace_dir / 'test.txt'
+        test_file.write_text('Hello, World!')
+
+        # Edit the file
+        result = await file_tools.edit_file('test.txt', 'World', 'Universe')
+
+        assert result['success'] is True
+        assert result['backup_created'] is not None
+        assert test_file.read_text() == 'Hello, Universe!'
+
+    @pytest.mark.asyncio
+    async def test_edit_file_creates_backup(self, file_tools, workspace_dir):
+        """Test that edit_file creates a backup."""
+        # Create test file
+        test_file = workspace_dir / 'test.txt'
+        test_file.write_text('original content')
+
+        # Edit the file
+        result = await file_tools.edit_file('test.txt', 'original', 'modified')
+
+        assert result['success'] is True
+        assert 'backup_created' in result
+
+        # Verify backup exists with original content
+        backup_file = workspace_dir / 'test.txt.bak'
+        assert backup_file.exists()
+        assert backup_file.read_text() == 'original content'
+
+    @pytest.mark.asyncio
+    async def test_edit_file_not_found(self, file_tools):
+        """Test editing nonexistent file returns error."""
+        result = await file_tools.edit_file('nonexistent.txt', 'old', 'new')
+
+        assert result['success'] is False
+        assert 'not found' in result['error'].lower()
+
+    @pytest.mark.asyncio
+    async def test_edit_file_old_string_not_found(self, file_tools, workspace_dir):
+        """Test editing when old_string doesn't exist."""
+        # Create test file
+        test_file = workspace_dir / 'test.txt'
+        test_file.write_text('Hello, World!')
+
+        result = await file_tools.edit_file('test.txt', 'Goodbye', 'Hi')
+
+        assert result['success'] is False
+        assert 'not found' in result['error'].lower()
+
+    @pytest.mark.asyncio
+    async def test_edit_file_multiple_matches(self, file_tools, workspace_dir):
+        """Test editing when old_string appears multiple times."""
+        # Create test file with duplicate text
+        test_file = workspace_dir / 'test.txt'
+        test_file.write_text('hello hello hello')
+
+        result = await file_tools.edit_file('test.txt', 'hello', 'hi')
+
+        assert result['success'] is False
+        assert 'appears' in result['error'].lower()
+        assert '3 times' in result['error'].lower()
+
+    @pytest.mark.asyncio
+    async def test_edit_file_outside_workspace(self, file_tools):
+        """Test editing file outside workspace returns error."""
+        result = await file_tools.edit_file('/etc/passwd', 'old', 'new')
+
+        assert result['success'] is False
+        assert 'outside workspace' in result['error'].lower()
+
+    @pytest.mark.asyncio
+    async def test_edit_file_delete_text(self, file_tools, workspace_dir):
+        """Test editing to delete text (empty new_string)."""
+        # Create test file
+        test_file = workspace_dir / 'test.txt'
+        test_file.write_text('Hello, World!')
+
+        result = await file_tools.edit_file('test.txt', ', World', '')
+
+        assert result['success'] is True
+        assert test_file.read_text() == 'Hello!'
+
+    @pytest.mark.asyncio
+    async def test_edit_file_multiline(self, file_tools, workspace_dir):
+        """Test editing multiline content."""
+        # Create test file with multiline content
+        test_file = workspace_dir / 'test.txt'
+        original = "line 1\nline 2\nline 3"
+        test_file.write_text(original)
+
+        result = await file_tools.edit_file('test.txt', 'line 2', 'modified line')
+
+        assert result['success'] is True
+        assert test_file.read_text() == "line 1\nmodified line\nline 3"

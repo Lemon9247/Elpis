@@ -10,12 +10,13 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from psyche.tools.tool_definitions import (
+    CreateFileInput,
+    EditFileInput,
     ExecuteBashInput,
     ListDirectoryInput,
     ReadFileInput,
     SearchCodebaseInput,
     ToolDefinition,
-    WriteFileInput,
 )
 from psyche.tools.implementations.bash_tool import BashTool
 from psyche.tools.implementations.directory_tool import DirectoryTool
@@ -89,10 +90,10 @@ class ToolEngine:
             handler=file_tools.read_file,
         )
 
-        # Register write_file
-        self.tools["write_file"] = ToolDefinition(
-            name="write_file",
-            description="Write content to a file in the workspace",
+        # Register create_file
+        self.tools["create_file"] = ToolDefinition(
+            name="create_file",
+            description="Create a new file in the workspace. Fails if file already exists.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -100,7 +101,7 @@ class ToolEngine:
                         "type": "string",
                         "description": "Path to file (relative to workspace or absolute)",
                     },
-                    "content": {"type": "string", "description": "Content to write to file"},
+                    "content": {"type": "string", "description": "Content to write to the new file"},
                     "create_dirs": {
                         "type": "boolean",
                         "description": "Create parent directories if they don't exist (default: true)",
@@ -109,8 +110,34 @@ class ToolEngine:
                 },
                 "required": ["file_path", "content"],
             },
-            input_model=WriteFileInput,
-            handler=file_tools.write_file,
+            input_model=CreateFileInput,
+            handler=file_tools.create_file,
+        )
+
+        # Register edit_file
+        self.tools["edit_file"] = ToolDefinition(
+            name="edit_file",
+            description="Edit an existing file by replacing old_string with new_string. Creates a backup.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to file (relative to workspace or absolute)",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": "The exact text to find and replace (must be unique in file)",
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "The text to replace it with",
+                    },
+                },
+                "required": ["file_path", "old_string", "new_string"],
+            },
+            input_model=EditFileInput,
+            handler=file_tools.edit_file,
         )
 
         # Register execute_bash
