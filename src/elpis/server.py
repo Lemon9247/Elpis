@@ -482,13 +482,28 @@ def initialize(settings: Optional[Settings] = None) -> None:
     if settings is None:
         settings = Settings()
 
-    # Configure logging for MCP (stderr only, no stdout)
+    # Configure logging
     logger.remove()
-    logger.add(
-        sys.stderr,
-        level=settings.logging.level.upper(),
-        format="<level>{level: <8}</level> | {message}",
-    )
+
+    # When running as a subprocess (stderr not a TTY), log to file to avoid
+    # breaking the parent's TUI. When running interactively, log to stderr.
+    if sys.stderr.isatty():
+        logger.add(
+            sys.stderr,
+            level=settings.logging.level.upper(),
+            format="<level>{level: <8}</level> | {message}",
+        )
+    else:
+        # Log to file when running as subprocess
+        from pathlib import Path
+        log_dir = Path.home() / ".elpis"
+        log_dir.mkdir(exist_ok=True)
+        logger.add(
+            log_dir / "elpis-server.log",
+            level=settings.logging.level.upper(),
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+            rotation="10 MB",
+        )
 
     logger.info("Initializing Elpis inference server...")
 

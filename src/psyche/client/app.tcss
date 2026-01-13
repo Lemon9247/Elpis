@@ -47,11 +47,19 @@
     border: round $secondary;
     padding: 1;
     background: $surface;
-    scrollbar-color: $primary;
 }
 
 #chat.streaming {
     border: dashed $warning;
+}
+
+#chat-history {
+    height: auto;
+    min-height: 1;
+}
+
+#streaming-message {
+    height: auto;
 }
 
 /* Thought panel - hidden by default */
