@@ -71,6 +71,10 @@ class ServerConfig:
     max_idle_tool_iterations: int = 3  # Max tool calls per reflection
     max_idle_result_chars: int = 8000  # Truncate tool results to this size
 
+    # Tool rate limiting for idle/dream state
+    startup_warmup_seconds: float = 120.0  # No tools for first 2 minutes after startup
+    idle_tool_cooldown_seconds: float = 300.0  # Minimum seconds between idle tool uses (5 min)
+
 
 class MemoryServer:
     """
@@ -119,6 +123,11 @@ class MemoryServer:
 
         self._input_queue: asyncio.Queue[str] = asyncio.Queue()
         self._running = False
+
+        # Track timing for idle tool rate limiting
+        import time
+        self._startup_time: float = time.time()
+        self._last_idle_tool_use: float = 0.0  # Never used yet
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -428,6 +437,40 @@ Keep responses helpful and conversational."""
             # Trigger frustration emotion
             await self.client.update_emotion("frustration", intensity=0.5)
 
+    def _can_use_idle_tools(self) -> bool:
+        """
+        Check if tool use is currently allowed during idle/dream state.
+
+        Tools are restricted during:
+        1. Startup warmup period (first N seconds after server start)
+        2. Cooldown period after last idle tool use
+
+        Returns:
+            True if idle tools can be used, False otherwise
+        """
+        import time
+        now = time.time()
+
+        # Check startup warmup period
+        time_since_startup = now - self._startup_time
+        if time_since_startup < self.config.startup_warmup_seconds:
+            logger.debug(
+                f"Idle tools disabled: startup warmup "
+                f"({time_since_startup:.0f}s / {self.config.startup_warmup_seconds:.0f}s)"
+            )
+            return False
+
+        # Check cooldown since last idle tool use
+        time_since_last_use = now - self._last_idle_tool_use
+        if time_since_last_use < self.config.idle_tool_cooldown_seconds:
+            logger.debug(
+                f"Idle tools disabled: cooldown "
+                f"({time_since_last_use:.0f}s / {self.config.idle_tool_cooldown_seconds:.0f}s)"
+            )
+            return False
+
+        return True
+
     def _is_safe_idle_path(self, path: str) -> bool:
         """
         Check if a path is safe for idle reflection access.
@@ -520,6 +563,19 @@ Keep responses helpful and conversational."""
             tool_call = self._parse_tool_call(response_text)
 
             if tool_call and self.config.allow_idle_tools:
+                # Check rate limiting first
+                if not self._can_use_idle_tools():
+                    logger.debug("Idle tool call skipped: rate limited")
+                    reflection_messages.append({
+                        "role": "assistant",
+                        "content": response_text
+                    })
+                    reflection_messages.append({
+                        "role": "user",
+                        "content": "[System] Tool use is currently rate-limited during reflection. Continue your thoughts without tools."
+                    })
+                    continue
+
                 # Validate the tool call for idle mode
                 error = self._validate_idle_tool_call(tool_call)
                 if error:
@@ -552,6 +608,10 @@ Keep responses helpful and conversational."""
                         }
                     }
                     tool_result = await self._tool_engine.execute_tool_call(formatted_call)
+
+                    # Update last idle tool use timestamp for rate limiting
+                    import time
+                    self._last_idle_tool_use = time.time()
 
                     # Notify callback
                     if self.on_tool_call:
