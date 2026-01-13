@@ -64,10 +64,12 @@ class ServerConfig:
     # Tool settings
     workspace_dir: str = "."  # Working directory for tools
     max_tool_iterations: int = 10  # Maximum ReAct iterations per request
+    max_tool_result_chars: int = 8000  # Truncate tool results to avoid context overflow
 
     # Idle reflection settings
     allow_idle_tools: bool = True  # Allow read-only tools during reflection
     max_idle_tool_iterations: int = 3  # Max tool calls per reflection
+    max_idle_result_chars: int = 4000  # Truncate tool results to this size
 
 
 class MemoryServer:
@@ -378,8 +380,12 @@ Keep responses helpful and concise."""
             if self.on_tool_call:
                 self.on_tool_call(tool_name, result)
 
-            # Add tool result to context
+            # Add tool result to context (truncated to avoid context overflow)
             result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+            max_chars = self.config.max_tool_result_chars
+            if len(result_str) > max_chars:
+                result_str = result_str[:max_chars] + f"\n\n[... truncated, {len(result_str) - max_chars} chars omitted]"
+
             self._compactor.add_message(create_message(
                 "user",
                 f"[Tool result for {tool_name}]:\n{result_str}",
@@ -532,7 +538,12 @@ Keep responses helpful and concise."""
                     if self.on_tool_call:
                         self.on_tool_call(tool_call["name"], tool_result)
 
+                    # Truncate large results to avoid context overflow
                     result_str = json.dumps(tool_result, indent=2) if isinstance(tool_result, dict) else str(tool_result)
+                    max_chars = self.config.max_idle_result_chars
+                    if len(result_str) > max_chars:
+                        result_str = result_str[:max_chars] + f"\n\n[... truncated, {len(result_str) - max_chars} chars omitted]"
+
                     reflection_messages.append({
                         "role": "user",
                         "content": f"[Tool result for {tool_call['name']}]:\n{result_str}"
