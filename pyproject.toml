@@ -30,6 +30,7 @@ dependencies = [
     "rich>=13.0",                   # Output formatting
     "click>=8.0",                   # CLI framework
     "huggingface-hub>=0.20.0",      # Model downloads
+    "mcp>=1.0.0",                   # MCP server framework
 ]
 
 [project.optional-dependencies]
@@ -52,6 +53,7 @@ rocm = [
 
 [project.scripts]
 elpis = "elpis.cli:main"
+elpis-server = "elpis.server:main"
 
 [tool.setuptools]
 packages = ["elpis"]
@@ -102,5 +104,5 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*"]
+module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*", "mcp.*"]
 ignore_missing_imports = true

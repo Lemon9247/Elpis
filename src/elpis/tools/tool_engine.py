@@ -244,3 +244,48 @@ class ToolEngine:
                 "result": {"success": False, "error": str(e)},
                 "duration_ms": duration_ms,
             }
+
+    async def execute_multiple_tool_calls(
+        self, tool_calls: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute multiple tool calls concurrently.
+
+        Args:
+            tool_calls: List of tool call specifications from LLM
+
+        Returns:
+            List of execution results in the same order as inputs
+        """
+        tasks = [self.execute_tool_call(call) for call in tool_calls]
+        return await asyncio.gather(*tasks, return_exceptions=False)
+
+    def sanitize_path(self, path: str) -> Path:
+        """
+        Sanitize and validate a path is within the workspace.
+
+        Args:
+            path: Relative or absolute path string
+
+        Returns:
+            Resolved Path object guaranteed within workspace
+
+        Raises:
+            ToolExecutionError: If path escapes workspace directory
+        """
+        path_obj = Path(path)
+
+        if path_obj.is_absolute():
+            resolved = path_obj.resolve()
+        else:
+            resolved = (self.workspace_dir / path_obj).resolve()
+
+        # Check path is within workspace
+        try:
+            resolved.relative_to(self.workspace_dir)
+        except ValueError:
+            raise ToolExecutionError(
+                f"Path '{path}' escapes workspace directory"
+            )
+
+        return resolved

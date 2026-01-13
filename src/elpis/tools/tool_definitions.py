@@ -1,14 +1,12 @@
 """Tool definitions with Pydantic models for input validation."""
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, Callable, Dict, Any, Type
 
 
 class ToolInput(BaseModel):
     """Base class for all tool inputs."""
 
-    class Config:
-        validate_assignment = True
-        extra = "forbid"  # Prevent extra fields
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
 
 class ReadFileInput(ToolInput):
