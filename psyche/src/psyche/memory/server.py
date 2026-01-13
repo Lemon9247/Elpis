@@ -122,21 +122,36 @@ class MemoryServer:
 
 ## How to Use Tools
 
-When you need to use a tool, respond with a tool call. The system will execute the tool and provide the result. You can then use the result to continue your response.
+When you need to use a tool, respond with ONLY a JSON tool call in this exact format:
+```tool_call
+{{"name": "tool_name", "arguments": {{"param1": "value1", "param2": "value2"}}}}
+```
+
+For example, to list files:
+```tool_call
+{{"name": "list_directory", "arguments": {{"path": ".", "recursive": false}}}}
+```
+
+To run a bash command:
+```tool_call
+{{"name": "execute_bash", "arguments": {{"command": "ls -la"}}}}
+```
+
+To read a file:
+```tool_call
+{{"name": "read_file", "arguments": {{"path": "example.txt"}}}}
+```
+
+IMPORTANT: When using a tool, respond with ONLY the tool_call block, nothing else. The system will execute the tool and show you the result. Then you can provide your final response.
 
 ## Guidelines
 
 - Use tools when tasks require file operations, running commands, or searching code
 - Always read files before modifying them
 - Be careful with bash commands - prefer safe operations
-- Provide clear, helpful responses based on tool results
+- After receiving tool results, provide a helpful summary for the user
 
-Your thoughts flow naturally between:
-- Responding to user messages
-- Using tools to accomplish tasks
-- Reflecting on results and planning next steps
-
-Keep responses helpful and concise. Show your reasoning when appropriate."""
+Keep responses helpful and concise."""
 
     @property
     def state(self) -> ServerState:
@@ -227,39 +242,39 @@ Keep responses helpful and concise. Show your reasoning when appropriate."""
         # ReAct loop - iterate until LLM provides final response without tools
         for iteration in range(self.config.max_tool_iterations):
             messages = self._compactor.get_api_messages()
-            tools = self._tool_engine.get_tool_schemas()
 
-            # Try function call first to see if LLM wants to use tools
-            try:
-                func_result = await self.client.function_call(
-                    messages=messages,
-                    tools=tools,
-                )
-
-                # If we got tool calls, execute them
-                if func_result.tool_calls:
-                    self._state = ServerState.PROCESSING_TOOLS
-                    await self._execute_tool_calls(func_result.tool_calls)
-                    # Continue loop to get next response
-                    continue
-
-            except Exception as e:
-                logger.debug(f"Function call failed (may be expected): {e}")
-                # Fall through to text generation
-
-            # No tool calls - generate final text response
+            # Generate response
             self._state = ServerState.THINKING
             result = await self.client.generate(
                 messages=messages,
                 emotional_modulation=self.config.emotional_modulation,
             )
 
-            # Add assistant response to context
-            self._compactor.add_message(create_message("assistant", result.content))
+            response_text = result.content
+
+            # Try to parse tool calls from the response
+            tool_call = self._parse_tool_call(response_text)
+
+            if tool_call:
+                # Found a tool call - execute it
+                self._state = ServerState.PROCESSING_TOOLS
+                logger.debug(f"Parsed tool call: {tool_call.get('name')}")
+
+                # Add assistant's tool call to context
+                self._compactor.add_message(create_message("assistant", response_text))
+
+                # Execute the tool
+                await self._execute_parsed_tool_call(tool_call)
+
+                # Continue loop to get next response
+                continue
+
+            # No tool call - this is the final response
+            self._compactor.add_message(create_message("assistant", response_text))
 
             # Notify callback
             if self.on_response:
-                self.on_response(result.content)
+                self.on_response(response_text)
 
             # Update emotional state based on interaction
             await self._update_emotion_for_interaction(result)
@@ -270,53 +285,114 @@ Keep responses helpful and concise. Show your reasoning when appropriate."""
         if self.on_response:
             self.on_response("[Max tool iterations reached]")
 
-    async def _execute_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> None:
-        """Execute tool calls and add results to context."""
-        for tool_call in tool_calls:
-            tool_name = tool_call.get("function", {}).get("name", "unknown")
-            logger.debug(f"Executing tool: {tool_name}")
+    def _parse_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Parse a tool call from the LLM's text response.
 
+        Looks for patterns like:
+        ```tool_call
+        {"name": "tool_name", "arguments": {...}}
+        ```
+
+        Returns:
+            Parsed tool call dict or None if no tool call found
+        """
+        import re
+
+        # Look for tool_call code blocks
+        pattern = r'```tool_call\s*\n?(.*?)\n?```'
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+
+        if match:
             try:
-                # Execute the tool
-                result = await self._tool_engine.execute_tool_call(tool_call)
+                tool_json = match.group(1).strip()
+                tool_call = json.loads(tool_json)
 
-                # Notify callback
-                if self.on_tool_call:
-                    self.on_tool_call(tool_name, result)
+                # Validate structure
+                if "name" in tool_call and "arguments" in tool_call:
+                    return tool_call
+                elif "name" in tool_call:
+                    # Allow calls with no arguments
+                    tool_call["arguments"] = {}
+                    return tool_call
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse tool call JSON: {e}")
 
-                # Add tool call and result to context
-                tool_call_id = tool_call.get("id", f"call_{tool_name}")
+        # Also try to find JSON object with name/arguments at the start of response
+        # (in case LLM doesn't use code block)
+        if text.strip().startswith('{'):
+            try:
+                # Find the JSON object
+                brace_count = 0
+                end_idx = 0
+                for i, c in enumerate(text):
+                    if c == '{':
+                        brace_count += 1
+                    elif c == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
 
-                # Add assistant message with tool call
-                self._compactor.add_message(create_message(
-                    "assistant",
-                    f"[Calling tool: {tool_name}]",
-                ))
+                if end_idx > 0:
+                    tool_json = text[:end_idx]
+                    tool_call = json.loads(tool_json)
+                    if "name" in tool_call:
+                        if "arguments" not in tool_call:
+                            tool_call["arguments"] = {}
+                        return tool_call
+            except json.JSONDecodeError:
+                pass
 
-                # Add tool result as a new message
-                result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
-                self._compactor.add_message(create_message(
-                    "user",
-                    f"[Tool result for {tool_name}]:\n{result_str}",
-                ))
+        return None
 
-                # Trigger success emotion for successful tool execution
-                if result.get("success", True):
-                    await self.client.update_emotion("success", intensity=0.3)
-                else:
-                    await self.client.update_emotion("failure", intensity=0.5)
+    async def _execute_parsed_tool_call(self, tool_call: Dict[str, Any]) -> None:
+        """Execute a parsed tool call and add result to context."""
+        tool_name = tool_call.get("name", "unknown")
+        arguments = tool_call.get("arguments", {})
 
-            except Exception as e:
-                logger.error(f"Tool execution failed: {e}")
+        logger.debug(f"Executing tool: {tool_name} with args: {arguments}")
 
-                # Add error to context
-                self._compactor.add_message(create_message(
-                    "user",
-                    f"[Tool error for {tool_name}]: {str(e)}",
-                ))
+        try:
+            # Convert to the format expected by tool engine
+            formatted_call = {
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(arguments) if isinstance(arguments, dict) else arguments,
+                }
+            }
 
-                # Trigger frustration emotion
-                await self.client.update_emotion("frustration", intensity=0.5)
+            # Execute the tool
+            result = await self._tool_engine.execute_tool_call(formatted_call)
+
+            # Notify callback
+            if self.on_tool_call:
+                self.on_tool_call(tool_name, result)
+
+            # Add tool result to context
+            result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+            self._compactor.add_message(create_message(
+                "user",
+                f"[Tool result for {tool_name}]:\n{result_str}",
+            ))
+
+            # Trigger emotion based on result
+            if result.get("success", True):
+                await self.client.update_emotion("success", intensity=0.3)
+            else:
+                await self.client.update_emotion("failure", intensity=0.5)
+
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+
+            # Add error to context
+            self._compactor.add_message(create_message(
+                "user",
+                f"[Tool error for {tool_name}]: {str(e)}",
+            ))
+
+            # Trigger frustration emotion
+            await self.client.update_emotion("frustration", intensity=0.5)
 
     async def _generate_idle_thought(self) -> None:
         """Generate an idle thought during quiet periods."""
