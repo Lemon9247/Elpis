@@ -125,14 +125,22 @@ Keep responses helpful and concise. Show your reasoning when appropriate."""
         self._running = True
         logger.info("Starting memory server...")
 
-        async with self.client.connect():
-            logger.info("Connected to Elpis inference server")
+        try:
+            async with self.client.connect():
+                logger.info("Connected to Elpis inference server")
 
-            # Add system prompt to context
-            self._compactor.add_message(create_message("system", self._system_prompt))
+                # Add system prompt to context
+                self._compactor.add_message(create_message("system", self._system_prompt))
 
-            # Run the main loop
-            await self._inference_loop()
+                # Run the main loop
+                await self._inference_loop()
+        except Exception as e:
+            logger.error(f"Server connection error: {e}")
+            raise
+        finally:
+            self._running = False
+            self._state = ServerState.SHUTTING_DOWN
+            logger.info("Memory server stopped")
 
     async def stop(self) -> None:
         """Stop the server gracefully."""

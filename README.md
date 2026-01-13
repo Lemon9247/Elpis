@@ -114,7 +114,9 @@ pip install -e .
 psyche
 ```
 
-The Psyche client connects to the Elpis MCP server and provides:
+**Note:** Psyche uses MCP's stdio transport, which spawns `elpis-server` as a subprocess automatically. You do NOT need to start `elpis-server` separately - just run `psyche`.
+
+The Psyche client provides:
 - Interactive REPL with Rich terminal output
 - Memory management with context compaction
 - Tool execution (file ops, bash, search)

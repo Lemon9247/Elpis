@@ -61,12 +61,11 @@ pip install -e ".[dev]"
 ## Usage
 
 ```bash
-# Start the client (requires Elpis server to be available)
+# Start Psyche - it will automatically spawn the Elpis server
 psyche
-
-# The Elpis server should be running separately:
-# In another terminal: elpis-server
 ```
+
+**Note:** Psyche uses MCP's stdio transport, which means it spawns `elpis-server` as a subprocess automatically. You do NOT need to start `elpis-server` separately.
 
 ### REPL Commands
 

@@ -64,8 +64,31 @@ class PsycheREPL:
         # Start the server in the background
         server_task = asyncio.create_task(self.server.start())
 
+        # Give the server a moment to start and potentially fail
+        await asyncio.sleep(0.5)
+
+        # Check if server failed to start
+        if server_task.done():
+            try:
+                server_task.result()  # This will raise if there was an exception
+            except Exception as e:
+                self.display.print_error(f"Failed to start server: {e}")
+                self.display.print_info(
+                    "Note: Psyche spawns elpis-server as a subprocess. "
+                    "Do not start elpis-server separately."
+                )
+                return
+
         try:
             while self.server.is_running:
+                # Check if server task failed
+                if server_task.done():
+                    try:
+                        server_task.result()
+                    except Exception as e:
+                        self.display.print_error(f"Server error: {e}")
+                    break
+
                 try:
                     # Get user input
                     user_input = await self._get_input()
@@ -84,9 +107,21 @@ class PsycheREPL:
                     self._waiting_for_response = True
                     self.server.submit_input(user_input)
 
-                    # Wait for response
+                    # Wait for response with timeout
+                    timeout_count = 0
                     while self._waiting_for_response and self.server.is_running:
                         await asyncio.sleep(0.1)
+                        timeout_count += 1
+                        # Check for server failure during wait
+                        if server_task.done():
+                            self._waiting_for_response = False
+                            break
+                        # Timeout after 5 minutes
+                        if timeout_count > 3000:
+                            self.display.stop_thinking_indicator()
+                            self.display.print_error("Response timeout")
+                            self._waiting_for_response = False
+                            break
 
                 except EOFError:
                     logger.info("EOF received, shutting down")
@@ -96,12 +131,16 @@ class PsycheREPL:
                     break
 
         finally:
+            self.display.stop_thinking_indicator()
             await self.server.stop()
-            server_task.cancel()
+            if not server_task.done():
+                server_task.cancel()
             try:
                 await server_task
             except asyncio.CancelledError:
                 pass
+            except Exception:
+                pass  # Already handled above
 
     async def _get_input(self) -> Optional[str]:
         """Get user input from the prompt."""
