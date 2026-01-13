@@ -13,6 +13,7 @@ from psyche.client.widgets import (
     ChatView,
     Sidebar,
     UserInput,
+    UserSubmitted,
     ThoughtPanel,
     ToolActivity,
     EmotionalStateDisplay,
@@ -141,7 +142,7 @@ class PsycheApp(App):
         except Exception:
             pass  # Ignore errors during status updates
 
-    async def on_user_input_submitted(self, message: UserInput.Submitted) -> None:
+    async def on_user_submitted(self, message: UserSubmitted) -> None:
         """Handle user input submission."""
         if message.is_command:
             await self._handle_command(message.value)
