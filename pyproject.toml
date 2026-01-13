@@ -28,6 +28,7 @@ dependencies = [
     "loguru>=0.7.0",                # Logging
     "prompt-toolkit>=3.0.52",       # Async REPL
     "rich>=13.0",                   # Output formatting
+    "textual>=0.47.0",              # TUI framework
     "click>=8.0",                   # CLI framework
     "huggingface-hub>=0.20.0",      # Model downloads
     "mcp>=1.0.0",                   # MCP server framework
@@ -101,5 +102,5 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*", "mcp.*"]
+module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*", "mcp.*", "textual.*"]
 ignore_missing_imports = true

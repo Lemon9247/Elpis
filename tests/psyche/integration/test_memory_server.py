@@ -26,6 +26,8 @@ class MockElpisClient:
         self.response_index = 0
         self.emotion_state = EmotionalState()
         self.emotion_updates = []
+        self.generate_stream_called = False
+        self.generate_stream_messages = None
 
     async def generate(
         self,
@@ -46,6 +48,28 @@ class MockElpisClient:
             emotional_state=self.emotion_state,
             modulated_params={"temperature": 0.7},
         )
+
+    async def generate_stream(
+        self,
+        messages,
+        max_tokens=2048,
+        temperature=None,
+        emotional_modulation=True,
+        poll_interval=0.05,
+    ):
+        """Yield response content as tokens (for streaming)."""
+        self.generate_stream_called = True
+        self.generate_stream_messages = messages
+
+        if self.response_index < len(self.generate_responses):
+            content = self.generate_responses[self.response_index]
+            self.response_index += 1
+        else:
+            content = "Default response"
+
+        # Yield content character by character (like real streaming)
+        for char in content:
+            yield char
 
     async def update_emotion(self, event_type: str, intensity: float = 1.0):
         """Track emotion updates."""
@@ -127,7 +151,7 @@ class TestMemoryServerInputProcessing:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_process_user_input_calls_generate(self, mock_client, server_config):
-        """Processing input should call client.generate."""
+        """Processing input should call client.generate_stream."""
         mock_client.generate_responses = ["Test response"]
 
         server = MemoryServer(mock_client, server_config)
@@ -135,6 +159,9 @@ class TestMemoryServerInputProcessing:
 
         # Manually process input without starting loop
         await server._process_user_input("Hello")
+
+        # Check that generate_stream was called
+        assert mock_client.generate_stream_called
 
         # Check that message was added to compactor
         messages = server._compactor.get_api_messages()

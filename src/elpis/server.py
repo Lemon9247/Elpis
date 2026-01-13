@@ -3,6 +3,8 @@
 import asyncio
 import json
 import sys
+import uuid
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -20,11 +22,21 @@ from elpis.emotion.regulation import HomeostasisRegulator
 from elpis.llm.inference import LlamaInference
 
 
+@dataclass
+class StreamState:
+    """Tracks state of an active streaming generation."""
+    buffer: List[str] = field(default_factory=list)
+    cursor: int = 0  # Position of last read
+    is_complete: bool = False
+    error: Optional[str] = None
+
+
 # Global state (initialized at startup)
 llm: Optional[LlamaInference] = None
 emotion_state: Optional[EmotionalState] = None
 regulator: Optional[HomeostasisRegulator] = None
 server = Server("elpis-inference")
+active_streams: Dict[str, StreamState] = {}
 
 
 def _ensure_initialized() -> None:
@@ -136,6 +148,70 @@ async def list_tools() -> List[Tool]:
                 "properties": {},
             },
         ),
+        Tool(
+            name="generate_stream_start",
+            description="Start streaming text generation. Returns stream_id for polling.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "messages": {
+                        "type": "array",
+                        "description": "Chat messages in OpenAI format",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "role": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["role", "content"],
+                        },
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Maximum tokens to generate",
+                        "default": 2048,
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "description": "Override temperature (null = emotionally modulated)",
+                    },
+                    "emotional_modulation": {
+                        "type": "boolean",
+                        "description": "Whether to apply emotional parameter modulation",
+                        "default": True,
+                    },
+                },
+                "required": ["messages"],
+            },
+        ),
+        Tool(
+            name="generate_stream_read",
+            description="Read new tokens from an active stream. Returns new content since last read.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "stream_id": {
+                        "type": "string",
+                        "description": "Stream ID from generate_stream_start",
+                    },
+                },
+                "required": ["stream_id"],
+            },
+        ),
+        Tool(
+            name="generate_stream_cancel",
+            description="Cancel an active stream and clean up resources.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "stream_id": {
+                        "type": "string",
+                        "description": "Stream ID to cancel",
+                    },
+                },
+                "required": ["stream_id"],
+            },
+        ),
     ]
 
 
@@ -155,6 +231,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             result = await _handle_reset_emotion()
         elif name == "get_emotion":
             result = await _handle_get_emotion()
+        elif name == "generate_stream_start":
+            result = await _handle_generate_stream_start(arguments)
+        elif name == "generate_stream_read":
+            result = await _handle_generate_stream_read(arguments)
+        elif name == "generate_stream_cancel":
+            result = await _handle_generate_stream_cancel(arguments)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -243,6 +325,119 @@ async def _handle_get_emotion() -> Dict[str, Any]:
     return emotion_state.to_dict()
 
 
+async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle generate_stream_start tool call.
+
+    Starts a background task that generates tokens and stores them in a buffer.
+    Returns a stream_id that can be polled with generate_stream_read.
+    """
+    messages = args["messages"]
+    max_tokens = args.get("max_tokens", 2048)
+    temperature = args.get("temperature")
+    emotional_modulation = args.get("emotional_modulation", True)
+
+    # Apply emotional modulation if enabled and no override
+    if emotional_modulation and temperature is None:
+        params = emotion_state.get_modulated_params()
+        temperature = params["temperature"]
+        top_p = params["top_p"]
+    else:
+        top_p = None
+
+    # Create stream state
+    stream_id = str(uuid.uuid4())
+    stream_state = StreamState()
+    active_streams[stream_id] = stream_state
+
+    # Start background task to generate tokens
+    async def stream_producer():
+        try:
+            async for token in llm.chat_completion_stream(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+            ):
+                stream_state.buffer.append(token)
+        except Exception as e:
+            logger.error(f"Stream generation error: {e}")
+            stream_state.error = str(e)
+        finally:
+            stream_state.is_complete = True
+            # Update emotional state based on full response
+            if stream_state.buffer:
+                full_content = "".join(stream_state.buffer)
+                regulator.process_response(full_content)
+
+    asyncio.create_task(stream_producer())
+
+    return {
+        "stream_id": stream_id,
+        "status": "started",
+        "emotional_state": emotion_state.to_dict(),
+    }
+
+
+async def _handle_generate_stream_read(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle generate_stream_read tool call.
+
+    Returns any new tokens since the last read, along with completion status.
+    """
+    stream_id = args["stream_id"]
+
+    if stream_id not in active_streams:
+        return {"error": f"Unknown stream_id: {stream_id}"}
+
+    stream_state = active_streams[stream_id]
+
+    # Get new tokens since last read
+    new_tokens = stream_state.buffer[stream_state.cursor:]
+    stream_state.cursor = len(stream_state.buffer)
+    new_content = "".join(new_tokens)
+
+    result = {
+        "new_content": new_content,
+        "is_complete": stream_state.is_complete,
+        "total_tokens": len(stream_state.buffer),
+    }
+
+    if stream_state.error:
+        result["error"] = stream_state.error
+
+    # Clean up completed streams
+    if stream_state.is_complete:
+        result["full_content"] = "".join(stream_state.buffer)
+        result["emotional_state"] = emotion_state.to_dict()
+        del active_streams[stream_id]
+
+    return result
+
+
+async def _handle_generate_stream_cancel(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle generate_stream_cancel tool call.
+
+    Cancels an active stream and cleans up resources.
+    Note: This marks the stream as cancelled but cannot stop the LLM mid-generation.
+    """
+    stream_id = args["stream_id"]
+
+    if stream_id not in active_streams:
+        return {"error": f"Unknown stream_id: {stream_id}"}
+
+    # Mark as complete and remove
+    stream_state = active_streams[stream_id]
+    stream_state.is_complete = True
+    del active_streams[stream_id]
+
+    return {
+        "status": "cancelled",
+        "stream_id": stream_id,
+    }
+
+
 @server.list_resources()
 async def list_resources() -> List[Resource]:
     """List available MCP resources."""
@@ -287,13 +482,32 @@ def initialize(settings: Optional[Settings] = None) -> None:
     if settings is None:
         settings = Settings()
 
-    # Configure logging for MCP (stderr only, no stdout)
+    # Configure logging
     logger.remove()
-    logger.add(
-        sys.stderr,
-        level=settings.logging.level.upper(),
-        format="<level>{level: <8}</level> | {message}",
-    )
+
+    # Check if we should suppress stderr logging (e.g., when run as subprocess by Psyche TUI)
+    # ELPIS_QUIET env var is set by Psyche to prevent logging from breaking the TUI
+    import os
+    quiet_mode = os.environ.get("ELPIS_QUIET", "").lower() in ("1", "true", "yes")
+
+    if quiet_mode:
+        # Log to file when running as subprocess of a TUI
+        from pathlib import Path
+        log_dir = Path.home() / ".elpis"
+        log_dir.mkdir(exist_ok=True)
+        logger.add(
+            log_dir / "elpis-server.log",
+            level=settings.logging.level.upper(),
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+            rotation="10 MB",
+        )
+    else:
+        # Log to stderr when running standalone
+        logger.add(
+            sys.stderr,
+            level=settings.logging.level.upper(),
+            format="<level>{level: <8}</level> | {message}",
+        )
 
     logger.info("Initializing Elpis inference server...")
 

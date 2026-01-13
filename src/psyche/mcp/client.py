@@ -62,6 +62,7 @@ class ElpisClient:
         self,
         server_command: str = "elpis-server",
         server_args: Optional[List[str]] = None,
+        quiet: bool = True,
     ):
         """
         Initialize the Elpis client.
@@ -69,9 +70,11 @@ class ElpisClient:
         Args:
             server_command: Command to launch the Elpis server
             server_args: Additional arguments for the server command
+            quiet: Suppress server stderr logging (set ELPIS_QUIET=1)
         """
         self.server_command = server_command
         self.server_args = server_args or []
+        self.quiet = quiet
         self._session: Optional[ClientSession] = None
         self._connected = False
 
@@ -89,9 +92,17 @@ class ElpisClient:
             async with client.connect() as connected_client:
                 result = await connected_client.generate(messages)
         """
+        # Set up environment for the server subprocess
+        env = None
+        if self.quiet:
+            import os
+            env = os.environ.copy()
+            env["ELPIS_QUIET"] = "1"
+
         server_params = StdioServerParameters(
             command=self.server_command,
             args=self.server_args,
+            env=env,
         )
 
         async with stdio_client(server_params) as (read, write):
@@ -160,6 +171,76 @@ class ElpisClient:
             emotional_state=EmotionalState.from_dict(result.get("emotional_state", {})),
             modulated_params=result.get("modulated_params", {}),
         )
+
+    async def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: int = 2048,
+        temperature: Optional[float] = None,
+        emotional_modulation: bool = True,
+        poll_interval: float = 0.05,
+    ) -> AsyncIterator[str]:
+        """
+        Generate text completion with streaming.
+
+        Yields tokens as they are generated, enabling real-time display.
+
+        Args:
+            messages: Chat messages in OpenAI format
+            max_tokens: Maximum tokens to generate
+            temperature: Override temperature (None = emotionally modulated)
+            emotional_modulation: Whether to apply emotional parameter modulation
+            poll_interval: Seconds between polling for new tokens
+
+        Yields:
+            Individual tokens as they become available
+        """
+        # Start the streaming generation
+        start_args = {
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "emotional_modulation": emotional_modulation,
+        }
+        if temperature is not None:
+            start_args["temperature"] = temperature
+
+        start_result = await self._call_tool("generate_stream_start", start_args)
+
+        if "error" in start_result:
+            raise RuntimeError(f"Failed to start stream: {start_result['error']}")
+
+        stream_id = start_result["stream_id"]
+
+        # Poll for tokens until complete
+        try:
+            while True:
+                read_result = await self._call_tool(
+                    "generate_stream_read",
+                    {"stream_id": stream_id}
+                )
+
+                if "error" in read_result:
+                    raise RuntimeError(f"Stream error: {read_result['error']}")
+
+                # Yield new tokens
+                new_content = read_result.get("new_content", "")
+                if new_content:
+                    yield new_content
+
+                # Check if complete
+                if read_result.get("is_complete", False):
+                    break
+
+                # Wait before next poll
+                await asyncio.sleep(poll_interval)
+
+        except Exception:
+            # Try to cancel the stream on error
+            try:
+                await self._call_tool("generate_stream_cancel", {"stream_id": stream_id})
+            except Exception:
+                pass
+            raise
 
     async def function_call(
         self,
