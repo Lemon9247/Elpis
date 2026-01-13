@@ -62,6 +62,7 @@ class ElpisClient:
         self,
         server_command: str = "elpis-server",
         server_args: Optional[List[str]] = None,
+        quiet: bool = True,
     ):
         """
         Initialize the Elpis client.
@@ -69,9 +70,11 @@ class ElpisClient:
         Args:
             server_command: Command to launch the Elpis server
             server_args: Additional arguments for the server command
+            quiet: Suppress server stderr logging (set ELPIS_QUIET=1)
         """
         self.server_command = server_command
         self.server_args = server_args or []
+        self.quiet = quiet
         self._session: Optional[ClientSession] = None
         self._connected = False
 
@@ -89,9 +92,17 @@ class ElpisClient:
             async with client.connect() as connected_client:
                 result = await connected_client.generate(messages)
         """
+        # Set up environment for the server subprocess
+        env = None
+        if self.quiet:
+            import os
+            env = os.environ.copy()
+            env["ELPIS_QUIET"] = "1"
+
         server_params = StdioServerParameters(
             command=self.server_command,
             args=self.server_args,
+            env=env,
         )
 
         async with stdio_client(server_params) as (read, write):

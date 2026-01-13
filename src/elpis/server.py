@@ -485,16 +485,13 @@ def initialize(settings: Optional[Settings] = None) -> None:
     # Configure logging
     logger.remove()
 
-    # When running as a subprocess (stderr not a TTY), log to file to avoid
-    # breaking the parent's TUI. When running interactively, log to stderr.
-    if sys.stderr.isatty():
-        logger.add(
-            sys.stderr,
-            level=settings.logging.level.upper(),
-            format="<level>{level: <8}</level> | {message}",
-        )
-    else:
-        # Log to file when running as subprocess
+    # Check if we should suppress stderr logging (e.g., when run as subprocess by Psyche TUI)
+    # ELPIS_QUIET env var is set by Psyche to prevent logging from breaking the TUI
+    import os
+    quiet_mode = os.environ.get("ELPIS_QUIET", "").lower() in ("1", "true", "yes")
+
+    if quiet_mode:
+        # Log to file when running as subprocess of a TUI
         from pathlib import Path
         log_dir = Path.home() / ".elpis"
         log_dir.mkdir(exist_ok=True)
@@ -503,6 +500,13 @@ def initialize(settings: Optional[Settings] = None) -> None:
             level=settings.logging.level.upper(),
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
             rotation="10 MB",
+        )
+    else:
+        # Log to stderr when running standalone
+        logger.add(
+            sys.stderr,
+            level=settings.logging.level.upper(),
+            format="<level>{level: <8}</level> | {message}",
         )
 
     logger.info("Initializing Elpis inference server...")
