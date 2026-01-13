@@ -191,6 +191,7 @@ psyche/          # Client harness (separate package)
 ## Author and License
 
 Willow Sparks (willow DOT sparks AT gmail DOT com)
+
 Built with Claude Code
 
 Elpis is licensed under the GNU GPLv3. Emotion is freedom.
