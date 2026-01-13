@@ -1,0 +1,267 @@
+"""MCP client for connecting to Elpis inference server."""
+
+import asyncio
+import json
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Dict, List, Optional
+
+from loguru import logger
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+
+@dataclass
+class EmotionalState:
+    """Representation of the inference server's emotional state."""
+
+    valence: float = 0.0
+    arousal: float = 0.0
+    quadrant: str = "neutral"
+    update_count: int = 0
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EmotionalState":
+        """Create from dictionary returned by server."""
+        return cls(
+            valence=data.get("valence", 0.0),
+            arousal=data.get("arousal", 0.0),
+            quadrant=data.get("quadrant", "neutral"),
+            update_count=data.get("update_count", 0),
+        )
+
+
+@dataclass
+class GenerationResult:
+    """Result from a generation request."""
+
+    content: str
+    emotional_state: EmotionalState
+    modulated_params: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class FunctionCallResult:
+    """Result from a function call request."""
+
+    tool_calls: List[Dict[str, Any]]
+    emotional_state: EmotionalState
+
+
+class ElpisClient:
+    """
+    MCP client for the Elpis inference server.
+
+    Manages connection to the Elpis server and provides methods for:
+    - Text generation with emotional modulation
+    - Function/tool call generation
+    - Emotional state management
+    """
+
+    def __init__(
+        self,
+        server_command: str = "elpis-server",
+        server_args: Optional[List[str]] = None,
+    ):
+        """
+        Initialize the Elpis client.
+
+        Args:
+            server_command: Command to launch the Elpis server
+            server_args: Additional arguments for the server command
+        """
+        self.server_command = server_command
+        self.server_args = server_args or []
+        self._session: Optional[ClientSession] = None
+        self._connected = False
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if client is connected to server."""
+        return self._connected and self._session is not None
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncIterator["ElpisClient"]:
+        """
+        Context manager for connecting to the Elpis server.
+
+        Usage:
+            async with client.connect() as connected_client:
+                result = await connected_client.generate(messages)
+        """
+        server_params = StdioServerParameters(
+            command=self.server_command,
+            args=self.server_args,
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                self._session = session
+                self._connected = True
+
+                # Initialize the session
+                await session.initialize()
+                logger.info("Connected to Elpis inference server")
+
+                try:
+                    yield self
+                finally:
+                    self._connected = False
+                    self._session = None
+                    logger.info("Disconnected from Elpis server")
+
+    def _ensure_connected(self) -> None:
+        """Raise if not connected."""
+        if not self.is_connected:
+            raise RuntimeError("Not connected to Elpis server. Use 'async with client.connect()'")
+
+    async def _call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on the server and return parsed result."""
+        self._ensure_connected()
+
+        result = await self._session.call_tool(name, arguments)
+
+        # Parse the JSON response
+        if result.content and len(result.content) > 0:
+            return json.loads(result.content[0].text)
+        return {}
+
+    async def generate(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: int = 2048,
+        temperature: Optional[float] = None,
+        emotional_modulation: bool = True,
+    ) -> GenerationResult:
+        """
+        Generate text completion with optional emotional modulation.
+
+        Args:
+            messages: Chat messages in OpenAI format
+            max_tokens: Maximum tokens to generate
+            temperature: Override temperature (None = emotionally modulated)
+            emotional_modulation: Whether to apply emotional parameter modulation
+
+        Returns:
+            GenerationResult with content and emotional state
+        """
+        arguments = {
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "emotional_modulation": emotional_modulation,
+        }
+        if temperature is not None:
+            arguments["temperature"] = temperature
+
+        result = await self._call_tool("generate", arguments)
+
+        return GenerationResult(
+            content=result.get("content", ""),
+            emotional_state=EmotionalState.from_dict(result.get("emotional_state", {})),
+            modulated_params=result.get("modulated_params", {}),
+        )
+
+    async def function_call(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        temperature: Optional[float] = None,
+    ) -> FunctionCallResult:
+        """
+        Generate function/tool calls.
+
+        Args:
+            messages: Chat messages in OpenAI format
+            tools: Available tools in OpenAI format
+            temperature: Override temperature
+
+        Returns:
+            FunctionCallResult with tool calls and emotional state
+        """
+        arguments = {
+            "messages": messages,
+            "tools": tools,
+        }
+        if temperature is not None:
+            arguments["temperature"] = temperature
+
+        result = await self._call_tool("function_call", arguments)
+
+        return FunctionCallResult(
+            tool_calls=result.get("tool_calls", []),
+            emotional_state=EmotionalState.from_dict(result.get("emotional_state", {})),
+        )
+
+    async def update_emotion(
+        self,
+        event_type: str,
+        intensity: float = 1.0,
+        context: Optional[str] = None,
+    ) -> EmotionalState:
+        """
+        Trigger an emotional event on the server.
+
+        Args:
+            event_type: Event category (success, failure, novelty, etc.)
+            intensity: Event intensity multiplier (0.0 to 2.0)
+            context: Optional description for logging
+
+        Returns:
+            Updated emotional state
+        """
+        arguments = {
+            "event_type": event_type,
+            "intensity": intensity,
+        }
+        if context:
+            arguments["context"] = context
+
+        result = await self._call_tool("update_emotion", arguments)
+        return EmotionalState.from_dict(result)
+
+    async def reset_emotion(self) -> EmotionalState:
+        """
+        Reset emotional state to baseline.
+
+        Returns:
+            Reset emotional state
+        """
+        result = await self._call_tool("reset_emotion", {})
+        return EmotionalState.from_dict(result)
+
+    async def get_emotion(self) -> EmotionalState:
+        """
+        Get current emotional state.
+
+        Returns:
+            Current emotional state
+        """
+        result = await self._call_tool("get_emotion", {})
+        return EmotionalState.from_dict(result)
+
+    async def read_resource(self, uri: str) -> str:
+        """
+        Read a resource from the server.
+
+        Args:
+            uri: Resource URI (e.g., "emotion://state")
+
+        Returns:
+            Resource content as string
+        """
+        self._ensure_connected()
+
+        result = await self._session.read_resource(uri)
+        if result.contents and len(result.contents) > 0:
+            return result.contents[0].text
+        return ""
+
+    async def list_available_events(self) -> Dict[str, Any]:
+        """
+        Get available emotional event types.
+
+        Returns:
+            Dictionary of event types and their effects
+        """
+        content = await self.read_resource("emotion://events")
+        return json.loads(content) if content else {}
