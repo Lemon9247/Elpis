@@ -52,7 +52,7 @@ class ServerConfig:
 
     # Inference settings
     idle_think_interval: float = 30.0  # Seconds between idle thoughts
-    think_temperature: float = 0.9  # Higher temp for creative thinking
+    think_temperature: float = 0.7  # Moderate temp for reflection (lower = less hallucination)
 
     # Context settings
     max_context_tokens: int = 6000
@@ -567,30 +567,30 @@ Keep responses helpful and concise."""
         """Get a prompt for generating internal reflection."""
         import random
 
+        base_instruction = """[INTERNAL REFLECTION - NOT FOR USER]
+This is your private thinking time. The user will not see this response.
+
+IMPORTANT: Do NOT imagine or hallucinate file contents, directory listings,
+or command outputs. If you want to explore, you MUST use the actual tools.
+
+To use a tool, respond with ONLY:
+```tool_call
+{"name": "tool_name", "arguments": {...}}
+```
+
+Available tools: list_directory, read_file, search_codebase
+(No bash or write access during reflection)
+
+"""
+
         prompts = [
-            """[INTERNAL REFLECTION - NOT FOR USER]
-This is your private thinking time. The user will not see this response.
-Reflect on what you've learned or observed. You may use read-only tools
-(read_file, list_directory, search_codebase) to explore the workspace.
-What interests you right now? What would you like to understand better?""",
+            base_instruction + "What exists in this workspace? Start by listing the directory.",
 
-            """[INTERNAL REFLECTION - NOT FOR USER]
-This is your private thinking time. The user will not see this response.
-Consider the workspace around you. Is there anything you're curious about?
-You can explore files and directories to satisfy your curiosity.
-What patterns or structures have you noticed?""",
+            base_instruction + "What would you like to understand about this codebase? Use tools to investigate.",
 
-            """[INTERNAL REFLECTION - NOT FOR USER]
-This is your private thinking time. The user will not see this response.
-Think about your recent interactions. What questions linger in your mind?
-You may use read-only tools to investigate. Share your genuine thoughts
-and wonderings - this is your space for authentic reflection.""",
+            base_instruction + "Reflect on the conversation so far. Is there something you could look up to help?",
 
-            """[INTERNAL REFLECTION - NOT FOR USER]
-This is your private thinking time. The user will not see this response.
-Let your mind wander. What draws your attention? Is there something
-in the codebase or conversation that sparked your interest?
-Explore freely with the tools available to you.""",
+            base_instruction + "Explore your surroundings. What files or patterns catch your interest?",
         ]
 
         return random.choice(prompts)
