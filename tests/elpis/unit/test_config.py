@@ -14,12 +14,12 @@ class TestModelSettings:
         """Test default configuration values."""
         settings = ModelSettings()
         assert settings.path == "./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf"
-        assert settings.context_length == 8192
+        assert settings.context_length == 32768
         assert settings.gpu_layers == 35
         assert settings.n_threads == 8
         assert settings.temperature == 0.7
         assert settings.top_p == 0.9
-        assert settings.max_tokens == 2048
+        assert settings.max_tokens == 4096
         assert settings.hardware_backend == "auto"
 
     def test_custom_values(self):

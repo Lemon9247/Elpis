@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elpis"
 version = "0.1.0"
-description = "MCP inference server with emotional regulation"
+description = "MCP inference server with emotional regulation and Psyche client"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0"}
@@ -53,17 +53,15 @@ rocm = [
 
 [project.scripts]
 elpis-server = "elpis.server:main"
+psyche = "psyche.cli:main"
 
-[tool.setuptools]
-packages = ["elpis"]
-
-[tool.setuptools.package-dir]
-elpis = "src/elpis"
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=src/elpis --cov-report=term-missing --cov-report=html"
+addopts = "-v --cov=src --cov-report=term-missing"
 asyncio_mode = "auto"
 markers = [
     "unit: unit tests",
@@ -72,7 +70,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/elpis"]
+source = ["src"]
 omit = ["*/tests/*", "*/test_*.py"]
 
 [tool.coverage.report]
@@ -91,7 +89,7 @@ select = ["E", "F", "I", "N", "UP", "W", "B", "A", "C4", "RUF"]
 ignore = ["E501"]  # Line length handled by formatter
 
 [tool.ruff.isort]
-known-first-party = ["elpis"]
+known-first-party = ["elpis", "psyche"]
 
 [tool.mypy]
 python_version = "3.10"

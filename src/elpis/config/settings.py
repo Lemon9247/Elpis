@@ -14,12 +14,17 @@ class ModelSettings(BaseSettings):
         default="./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf",
         description="Path to GGUF model file",
     )
-    context_length: int = Field(default=8192, ge=512, le=32768)
+    context_length: int = Field(
+        default=32768,
+        ge=512,
+        le=131072,
+        description="Context window size in tokens",
+    )
     gpu_layers: int = Field(default=35, ge=0, le=100)
     n_threads: int = Field(default=8, ge=1, le=64)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
-    max_tokens: int = Field(default=2048, ge=1, le=8192)
+    max_tokens: int = Field(default=4096, ge=1, le=32768)
     hardware_backend: str = Field(
         default="auto", description="Hardware backend: auto, cuda, rocm, cpu"
     )

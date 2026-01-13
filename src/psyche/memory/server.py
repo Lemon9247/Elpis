@@ -54,9 +54,9 @@ class ServerConfig:
     idle_think_interval: float = 30.0  # Seconds between idle thoughts
     think_temperature: float = 0.7  # Moderate temp for reflection (lower = less hallucination)
 
-    # Context settings
-    max_context_tokens: int = 6000
-    reserve_tokens: int = 2000
+    # Context settings (sized for 32k context window)
+    max_context_tokens: int = 24000
+    reserve_tokens: int = 4000
 
     # Emotional settings
     emotional_modulation: bool = True
@@ -64,12 +64,12 @@ class ServerConfig:
     # Tool settings
     workspace_dir: str = "."  # Working directory for tools
     max_tool_iterations: int = 10  # Maximum ReAct iterations per request
-    max_tool_result_chars: int = 8000  # Truncate tool results to avoid context overflow
+    max_tool_result_chars: int = 16000  # Truncate tool results to avoid context overflow
 
     # Idle reflection settings
     allow_idle_tools: bool = True  # Allow read-only tools during reflection
     max_idle_tool_iterations: int = 3  # Max tool calls per reflection
-    max_idle_result_chars: int = 4000  # Truncate tool results to this size
+    max_idle_result_chars: int = 8000  # Truncate tool results to this size
 
 
 class MemoryServer:
