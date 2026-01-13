@@ -48,9 +48,9 @@ def main(
     # Configure server
     server_config = ServerConfig(
         idle_think_interval=30.0,
-        max_idle_thoughts=3,
         emotional_modulation=True,
         workspace_dir=workspace,
+        allow_idle_tools=True,  # Enable sandboxed tool use during reflection
     )
 
     # Create memory server

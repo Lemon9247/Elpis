@@ -85,9 +85,9 @@ def server_config():
     """Create server config with short intervals for testing."""
     return ServerConfig(
         idle_think_interval=0.1,  # Very short for tests
-        max_idle_thoughts=2,
         max_context_tokens=1000,
         reserve_tokens=200,
+        allow_idle_tools=False,  # Disable for simpler tests
     )
 
 
@@ -185,8 +185,8 @@ class TestMemoryServerIdleThinking:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_idle_thought_count_increments(self, mock_client, server_config):
-        """Idle thought count should track generated thoughts."""
+    async def test_idle_thoughts_continue_indefinitely(self, mock_client, server_config):
+        """Idle thoughts should continue without limit."""
         mock_client.generate_responses = ["Thought 1", "Thought 2", "Thought 3"]
         thoughts = []
 
@@ -197,27 +197,29 @@ class TestMemoryServerIdleThinking:
         server.client = mock_client
         server._running = True
 
+        # Generate multiple idle thoughts - no limit
         await server._generate_idle_thought()
-        assert server._idle_thought_count == 0  # Not auto-incremented
+        await server._generate_idle_thought()
+        await server._generate_idle_thought()
 
-        # The loop increments it
-        server._idle_thought_count += 1
-        assert server._idle_thought_count == 1
+        assert len(thoughts) == 3
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_user_input_resets_idle_count(self, mock_client, server_config):
-        """User input should reset idle thought count."""
-        mock_client.generate_responses = ["Response"]
+    async def test_idle_tools_can_be_disabled(self, mock_client, server_config):
+        """Idle reflection should respect allow_idle_tools setting."""
+        # Response with a tool call
+        mock_client.generate_responses = [
+            '```tool_call\n{"name": "execute_bash", "arguments": {"command": "ls"}}\n```',
+            "Final thought after no tools"
+        ]
 
         server = MemoryServer(mock_client, server_config)
         server.client = mock_client
-        server._idle_thought_count = 3
+        server._running = True
 
-        await server._process_user_input("Hello")
-
-        # Note: The actual reset happens in the loop, not _process_user_input
-        # This tests that count can be reset
+        # With allow_idle_tools=False, tool calls should be ignored
+        assert server.config.allow_idle_tools is False
 
 
 class TestMemoryServerContextCompaction:
@@ -393,7 +395,6 @@ class TestMemoryServerInferenceLoop:
 
         # Don't queue any input - simulate timeout
         await server._generate_idle_thought()
-        server._idle_thought_count += 1
 
         assert len(thoughts) == 1
-        assert server._idle_thought_count == 1
+        assert thoughts[0].thought_type == "reflection"

@@ -2,16 +2,29 @@
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from loguru import logger
 
 from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult
 from psyche.memory.compaction import ContextCompactor, Message, create_message
 from psyche.tools.tool_engine import ToolEngine, ToolSettings
+
+
+# Tools that are safe for autonomous idle reflection (read-only)
+SAFE_IDLE_TOOLS: Set[str] = {"read_file", "list_directory", "search_codebase"}
+
+# Sensitive paths that should never be accessed during idle reflection
+SENSITIVE_PATH_PATTERNS: Set[str] = {
+    ".ssh", ".gnupg", ".gpg", ".aws", ".azure", ".gcloud",
+    ".config/gh", ".netrc", ".npmrc", ".pypirc",
+    "id_rsa", "id_ed25519", "id_ecdsa", ".pem", ".key",
+    "credentials", "secrets", "tokens", ".env",
+}
 
 
 class ServerState(Enum):
@@ -39,7 +52,6 @@ class ServerConfig:
 
     # Inference settings
     idle_think_interval: float = 30.0  # Seconds between idle thoughts
-    max_idle_thoughts: int = 3  # Max idle thoughts before waiting
     think_temperature: float = 0.9  # Higher temp for creative thinking
 
     # Context settings
@@ -52,6 +64,10 @@ class ServerConfig:
     # Tool settings
     workspace_dir: str = "."  # Working directory for tools
     max_tool_iterations: int = 10  # Maximum ReAct iterations per request
+
+    # Idle reflection settings
+    allow_idle_tools: bool = True  # Allow read-only tools during reflection
+    max_idle_tool_iterations: int = 3  # Max tool calls per reflection
 
 
 class MemoryServer:
@@ -98,7 +114,6 @@ class MemoryServer:
 
         self._input_queue: asyncio.Queue[str] = asyncio.Queue()
         self._running = False
-        self._idle_thought_count = 0
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -211,16 +226,10 @@ Keep responses helpful and concise."""
                         timeout=self.config.idle_think_interval,
                     )
                     await self._process_user_input(user_input)
-                    self._idle_thought_count = 0
 
                 except asyncio.TimeoutError:
-                    # No user input - generate idle thought
-                    if self._idle_thought_count < self.config.max_idle_thoughts:
-                        await self._generate_idle_thought()
-                        self._idle_thought_count += 1
-                    else:
-                        # Reached max idle thoughts - just wait
-                        self._state = ServerState.IDLE
+                    # No user input - generate idle thought (no limit)
+                    await self._generate_idle_thought()
 
             except asyncio.CancelledError:
                 break
@@ -394,46 +403,195 @@ Keep responses helpful and concise."""
             # Trigger frustration emotion
             await self.client.update_emotion("frustration", intensity=0.5)
 
+    def _is_safe_idle_path(self, path: str) -> bool:
+        """
+        Check if a path is safe for idle reflection access.
+
+        Paths must be within workspace and not match sensitive patterns.
+
+        Args:
+            path: The path to check
+
+        Returns:
+            True if path is safe, False otherwise
+        """
+        # Normalize the path
+        path_lower = path.lower()
+
+        # Check for sensitive patterns
+        for pattern in SENSITIVE_PATH_PATTERNS:
+            if pattern in path_lower:
+                logger.warning(f"Blocked sensitive path in idle reflection: {path}")
+                return False
+
+        # Check for parent directory traversal
+        if ".." in path:
+            logger.warning(f"Blocked parent traversal in idle reflection: {path}")
+            return False
+
+        # Verify path is within workspace
+        try:
+            resolved = Path(path)
+            if not resolved.is_absolute():
+                resolved = (Path(self.config.workspace_dir) / path).resolve()
+            else:
+                resolved = resolved.resolve()
+
+            workspace = Path(self.config.workspace_dir).resolve()
+            resolved.relative_to(workspace)
+            return True
+        except ValueError:
+            logger.warning(f"Path escapes workspace in idle reflection: {path}")
+            return False
+
+    def _validate_idle_tool_call(self, tool_call: Dict[str, Any]) -> Optional[str]:
+        """
+        Validate a tool call for idle reflection mode.
+
+        Args:
+            tool_call: The parsed tool call
+
+        Returns:
+            Error message if invalid, None if valid
+        """
+        tool_name = tool_call.get("name", "")
+        arguments = tool_call.get("arguments", {})
+
+        # Check if tool is in safe list
+        if tool_name not in SAFE_IDLE_TOOLS:
+            return f"Tool '{tool_name}' not allowed during idle reflection"
+
+        # Check path arguments for safety
+        path_args = ["file_path", "dir_path", "path"]
+        for arg in path_args:
+            if arg in arguments:
+                if not self._is_safe_idle_path(arguments[arg]):
+                    return f"Path '{arguments[arg]}' not allowed during idle reflection"
+
+        return None
+
     async def _generate_idle_thought(self) -> None:
-        """Generate an idle thought during quiet periods."""
+        """Generate an idle thought during quiet periods with optional tool use."""
         self._state = ServerState.THINKING
 
         # Add a prompt for reflection
         reflection_prompt = self._get_reflection_prompt()
-        messages = self._compactor.get_api_messages() + [
+        reflection_messages = self._compactor.get_api_messages() + [
             {"role": "user", "content": reflection_prompt}
         ]
 
-        result = await self.client.generate(
-            messages=messages,
-            max_tokens=256,  # Shorter for idle thoughts
-            temperature=self.config.think_temperature,
-            emotional_modulation=self.config.emotional_modulation,
-        )
+        # ReAct loop for idle reflection (with restrictions)
+        for iteration in range(self.config.max_idle_tool_iterations):
+            result = await self.client.generate(
+                messages=reflection_messages,
+                max_tokens=512,
+                temperature=self.config.think_temperature,
+                emotional_modulation=self.config.emotional_modulation,
+            )
 
-        thought = ThoughtEvent(
-            content=result.content,
-            thought_type="reflection",
-            triggered_by="idle",
-        )
+            response_text = result.content
 
-        logger.debug(f"Idle thought: {result.content[:100]}...")
+            # Check for tool calls
+            tool_call = self._parse_tool_call(response_text)
 
-        if self.on_thought:
-            self.on_thought(thought)
+            if tool_call and self.config.allow_idle_tools:
+                # Validate the tool call for idle mode
+                error = self._validate_idle_tool_call(tool_call)
+                if error:
+                    logger.debug(f"Idle tool call rejected: {error}")
+                    # Add rejection to messages and continue
+                    reflection_messages.append({
+                        "role": "assistant",
+                        "content": response_text
+                    })
+                    reflection_messages.append({
+                        "role": "user",
+                        "content": f"[System] {error}. Continue your reflection without this tool."
+                    })
+                    continue
 
-        # Optionally add thought to context (commented out to save tokens)
-        # self._compactor.add_message(create_message("assistant", f"[Thought] {result.content}"))
+                # Execute the safe tool
+                self._state = ServerState.PROCESSING_TOOLS
+                logger.debug(f"Idle reflection using tool: {tool_call.get('name')}")
+
+                reflection_messages.append({
+                    "role": "assistant",
+                    "content": response_text
+                })
+
+                try:
+                    formatted_call = {
+                        "function": {
+                            "name": tool_call["name"],
+                            "arguments": json.dumps(tool_call.get("arguments", {})),
+                        }
+                    }
+                    tool_result = await self._tool_engine.execute_tool_call(formatted_call)
+
+                    # Notify callback
+                    if self.on_tool_call:
+                        self.on_tool_call(tool_call["name"], tool_result)
+
+                    result_str = json.dumps(tool_result, indent=2) if isinstance(tool_result, dict) else str(tool_result)
+                    reflection_messages.append({
+                        "role": "user",
+                        "content": f"[Tool result for {tool_call['name']}]:\n{result_str}"
+                    })
+                except Exception as e:
+                    logger.error(f"Idle tool execution failed: {e}")
+                    reflection_messages.append({
+                        "role": "user",
+                        "content": f"[Tool error]: {str(e)}"
+                    })
+
+                continue
+
+            # No tool call or tools disabled - this is the final thought
+            thought = ThoughtEvent(
+                content=response_text,
+                thought_type="reflection",
+                triggered_by="idle",
+            )
+
+            logger.debug(f"Idle thought: {response_text[:100]}...")
+
+            if self.on_thought:
+                self.on_thought(thought)
+
+            return
+
+        # Max iterations reached
+        logger.debug("Max idle tool iterations reached")
 
     def _get_reflection_prompt(self) -> str:
-        """Get a prompt for generating reflection."""
-        prompts = [
-            "[Internal] What patterns have I noticed in our conversation?",
-            "[Internal] Is there anything I should remember or explore?",
-            "[Internal] What questions remain unanswered?",
-            "[Internal] What could I do better?",
-        ]
+        """Get a prompt for generating internal reflection."""
         import random
+
+        prompts = [
+            """[INTERNAL REFLECTION - NOT FOR USER]
+This is your private thinking time. The user will not see this response.
+Reflect on what you've learned or observed. You may use read-only tools
+(read_file, list_directory, search_codebase) to explore the workspace.
+What interests you right now? What would you like to understand better?""",
+
+            """[INTERNAL REFLECTION - NOT FOR USER]
+This is your private thinking time. The user will not see this response.
+Consider the workspace around you. Is there anything you're curious about?
+You can explore files and directories to satisfy your curiosity.
+What patterns or structures have you noticed?""",
+
+            """[INTERNAL REFLECTION - NOT FOR USER]
+This is your private thinking time. The user will not see this response.
+Think about your recent interactions. What questions linger in your mind?
+You may use read-only tools to investigate. Share your genuine thoughts
+and wonderings - this is your space for authentic reflection.""",
+
+            """[INTERNAL REFLECTION - NOT FOR USER]
+This is your private thinking time. The user will not see this response.
+Let your mind wander. What draws your attention? Is there something
+in the codebase or conversation that sparked your interest?
+Explore freely with the tools available to you.""",
+        ]
 
         return random.choice(prompts)
 
@@ -456,7 +614,6 @@ Keep responses helpful and concise."""
             "message_count": len(self._compactor.messages),
             "total_tokens": self._compactor.total_tokens,
             "available_tokens": self._compactor.available_tokens,
-            "idle_thought_count": self._idle_thought_count,
             "emotional_state": {
                 "valence": emotion.valence,
                 "arousal": emotion.arousal,
@@ -469,5 +626,4 @@ Keep responses helpful and concise."""
         self._compactor.clear()
         # Re-add system prompt
         self._compactor.add_message(create_message("system", self._system_prompt))
-        self._idle_thought_count = 0
         logger.info("Context cleared")
