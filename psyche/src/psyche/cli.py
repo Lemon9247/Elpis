@@ -28,6 +28,7 @@ def main(
     debug: bool = False,
     show_thoughts: bool = True,
     show_emotion: bool = False,
+    workspace: str = ".",
 ) -> None:
     """
     Main entry point for Psyche CLI.
@@ -37,6 +38,7 @@ def main(
         debug: Enable debug logging
         show_thoughts: Display internal thoughts
         show_emotion: Show emotional state in prompt
+        workspace: Working directory for tool operations
     """
     setup_logging(debug)
 
@@ -48,6 +50,7 @@ def main(
         idle_think_interval=30.0,
         max_idle_thoughts=3,
         emotional_modulation=True,
+        workspace_dir=workspace,
     )
 
     # Create memory server

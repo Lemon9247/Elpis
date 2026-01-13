@@ -195,6 +195,31 @@ class ToolEngine:
         """
         return [tool.to_openai_schema() for tool in self.tools.values()]
 
+    def get_tool_descriptions(self) -> str:
+        """
+        Return human-readable descriptions of available tools.
+
+        Returns:
+            Formatted string describing all available tools
+        """
+        descriptions = []
+        for name, tool in self.tools.items():
+            schema = tool.to_openai_schema()
+            func = schema.get("function", {})
+            desc = func.get("description", "No description")
+            params = func.get("parameters", {}).get("properties", {})
+
+            param_list = []
+            for param_name, param_info in params.items():
+                param_desc = param_info.get("description", "")
+                param_type = param_info.get("type", "any")
+                param_list.append(f"  - {param_name} ({param_type}): {param_desc}")
+
+            params_str = "\n".join(param_list) if param_list else "  (no parameters)"
+            descriptions.append(f"### {name}\n{desc}\nParameters:\n{params_str}")
+
+        return "\n\n".join(descriptions)
+
     async def execute_tool_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a single tool call from LLM.

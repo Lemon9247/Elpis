@@ -1,14 +1,17 @@
 """Memory server with continuous inference loop."""
 
 import asyncio
+import json
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
-from psyche.mcp.client import ElpisClient, GenerationResult
+from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult
 from psyche.memory.compaction import ContextCompactor, Message, create_message
+from psyche.tools.tool_engine import ToolEngine, ToolSettings
 
 
 class ServerState(Enum):
@@ -46,6 +49,10 @@ class ServerConfig:
     # Emotional settings
     emotional_modulation: bool = True
 
+    # Tool settings
+    workspace_dir: str = "."  # Working directory for tools
+    max_tool_iterations: int = 10  # Maximum ReAct iterations per request
+
 
 class MemoryServer:
     """
@@ -65,6 +72,7 @@ class MemoryServer:
         config: Optional[ServerConfig] = None,
         on_thought: Optional[Callable[[ThoughtEvent], None]] = None,
         on_response: Optional[Callable[[str], None]] = None,
+        on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ):
         """
         Initialize the memory server.
@@ -74,11 +82,13 @@ class MemoryServer:
             config: Server configuration
             on_thought: Callback for internal thoughts (for UI display)
             on_response: Callback for responses to user
+            on_tool_call: Callback when a tool is executed (name, result)
         """
         self.client = elpis_client
         self.config = config or ServerConfig()
         self.on_thought = on_thought
         self.on_response = on_response
+        self.on_tool_call = on_tool_call
 
         self._state = ServerState.IDLE
         self._compactor = ContextCompactor(
@@ -90,23 +100,41 @@ class MemoryServer:
         self._running = False
         self._idle_thought_count = 0
 
+        # Initialize tool engine
+        self._tool_engine = ToolEngine(
+            workspace_dir=self.config.workspace_dir,
+            settings=ToolSettings(),
+        )
+
         # System prompt for the continuous agent
         self._system_prompt = self._build_system_prompt()
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the agent."""
-        return """You are Psyche, a continuously thinking AI assistant.
+        # Get tool descriptions from the tool engine
+        tool_descriptions = self._tool_engine.get_tool_descriptions()
+
+        return f"""You are Psyche, a continuously thinking AI assistant with access to tools.
+
+## Available Tools
+
+{tool_descriptions}
+
+## How to Use Tools
+
+When you need to use a tool, respond with a tool call. The system will execute the tool and provide the result. You can then use the result to continue your response.
+
+## Guidelines
+
+- Use tools when tasks require file operations, running commands, or searching code
+- Always read files before modifying them
+- Be careful with bash commands - prefer safe operations
+- Provide clear, helpful responses based on tool results
 
 Your thoughts flow naturally between:
 - Responding to user messages
-- Reflecting on past conversations
-- Planning future actions
-- Exploring interesting ideas
-
-When generating idle thoughts, be creative but grounded. Consider:
-- What patterns have you noticed?
-- What could you explore further?
-- What questions remain unanswered?
+- Using tools to accomplish tasks
+- Reflecting on results and planning next steps
 
 Keep responses helpful and concise. Show your reasoning when appropriate."""
 
@@ -189,28 +217,106 @@ Keep responses helpful and concise. Show your reasoning when appropriate."""
         logger.info("Inference loop stopped")
 
     async def _process_user_input(self, text: str) -> None:
-        """Process user input and generate response."""
+        """Process user input with ReAct loop for tool execution."""
         self._state = ServerState.THINKING
         logger.debug(f"Processing user input: {text[:50]}...")
 
         # Add user message to context
         self._compactor.add_message(create_message("user", text))
 
-        # Generate response
-        result = await self.client.generate(
-            messages=self._compactor.get_api_messages(),
-            emotional_modulation=self.config.emotional_modulation,
-        )
+        # ReAct loop - iterate until LLM provides final response without tools
+        for iteration in range(self.config.max_tool_iterations):
+            messages = self._compactor.get_api_messages()
+            tools = self._tool_engine.get_tool_schemas()
 
-        # Add assistant response to context
-        self._compactor.add_message(create_message("assistant", result.content))
+            # Try function call first to see if LLM wants to use tools
+            try:
+                func_result = await self.client.function_call(
+                    messages=messages,
+                    tools=tools,
+                )
 
-        # Notify callback
+                # If we got tool calls, execute them
+                if func_result.tool_calls:
+                    self._state = ServerState.PROCESSING_TOOLS
+                    await self._execute_tool_calls(func_result.tool_calls)
+                    # Continue loop to get next response
+                    continue
+
+            except Exception as e:
+                logger.debug(f"Function call failed (may be expected): {e}")
+                # Fall through to text generation
+
+            # No tool calls - generate final text response
+            self._state = ServerState.THINKING
+            result = await self.client.generate(
+                messages=messages,
+                emotional_modulation=self.config.emotional_modulation,
+            )
+
+            # Add assistant response to context
+            self._compactor.add_message(create_message("assistant", result.content))
+
+            # Notify callback
+            if self.on_response:
+                self.on_response(result.content)
+
+            # Update emotional state based on interaction
+            await self._update_emotion_for_interaction(result)
+            return
+
+        # Max iterations reached
+        logger.warning(f"Max tool iterations ({self.config.max_tool_iterations}) reached")
         if self.on_response:
-            self.on_response(result.content)
+            self.on_response("[Max tool iterations reached]")
 
-        # Update emotional state based on interaction
-        await self._update_emotion_for_interaction(result)
+    async def _execute_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> None:
+        """Execute tool calls and add results to context."""
+        for tool_call in tool_calls:
+            tool_name = tool_call.get("function", {}).get("name", "unknown")
+            logger.debug(f"Executing tool: {tool_name}")
+
+            try:
+                # Execute the tool
+                result = await self._tool_engine.execute_tool_call(tool_call)
+
+                # Notify callback
+                if self.on_tool_call:
+                    self.on_tool_call(tool_name, result)
+
+                # Add tool call and result to context
+                tool_call_id = tool_call.get("id", f"call_{tool_name}")
+
+                # Add assistant message with tool call
+                self._compactor.add_message(create_message(
+                    "assistant",
+                    f"[Calling tool: {tool_name}]",
+                ))
+
+                # Add tool result as a new message
+                result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                self._compactor.add_message(create_message(
+                    "user",
+                    f"[Tool result for {tool_name}]:\n{result_str}",
+                ))
+
+                # Trigger success emotion for successful tool execution
+                if result.get("success", True):
+                    await self.client.update_emotion("success", intensity=0.3)
+                else:
+                    await self.client.update_emotion("failure", intensity=0.5)
+
+            except Exception as e:
+                logger.error(f"Tool execution failed: {e}")
+
+                # Add error to context
+                self._compactor.add_message(create_message(
+                    "user",
+                    f"[Tool error for {tool_name}]: {str(e)}",
+                ))
+
+                # Trigger frustration emotion
+                await self.client.update_emotion("frustration", intensity=0.5)
 
     async def _generate_idle_thought(self) -> None:
         """Generate an idle thought during quiet periods."""
