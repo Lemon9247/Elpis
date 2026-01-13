@@ -1,13 +1,10 @@
 """Command-line interface for Psyche."""
 
-import asyncio
 import sys
-from typing import Optional
 
 from loguru import logger
 
-from psyche.client.display import DisplayConfig
-from psyche.client.repl import PsycheREPL
+from psyche.client.app import PsycheApp
 from psyche.mcp.client import ElpisClient
 from psyche.memory.server import MemoryServer, ServerConfig
 
@@ -26,8 +23,6 @@ def setup_logging(debug: bool = False) -> None:
 def main(
     server_command: str = "elpis-server",
     debug: bool = False,
-    show_thoughts: bool = True,
-    show_emotion: bool = False,
     workspace: str = ".",
 ) -> None:
     """
@@ -36,8 +31,6 @@ def main(
     Args:
         server_command: Command to launch Elpis server
         debug: Enable debug logging
-        show_thoughts: Display internal thoughts
-        show_emotion: Show emotional state in prompt
         workspace: Working directory for tool operations
     """
     setup_logging(debug)
@@ -56,17 +49,11 @@ def main(
     # Create memory server
     server = MemoryServer(elpis_client=client, config=server_config)
 
-    # Configure display
-    display_config = DisplayConfig(
-        show_thoughts=show_thoughts,
-        show_emotional_state=show_emotion,
-    )
-
-    # Create and run REPL
-    repl = PsycheREPL(server=server, display_config=display_config)
+    # Create and run Textual app
+    app = PsycheApp(memory_server=server)
 
     try:
-        asyncio.run(repl.run())
+        app.run()
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
     except Exception as e:

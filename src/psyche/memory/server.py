@@ -90,7 +90,8 @@ class MemoryServer:
         config: Optional[ServerConfig] = None,
         on_thought: Optional[Callable[[ThoughtEvent], None]] = None,
         on_response: Optional[Callable[[str], None]] = None,
-        on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        on_tool_call: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None,
+        on_token: Optional[Callable[[str], None]] = None,
     ):
         """
         Initialize the memory server.
@@ -100,13 +101,15 @@ class MemoryServer:
             config: Server configuration
             on_thought: Callback for internal thoughts (for UI display)
             on_response: Callback for responses to user
-            on_tool_call: Callback when a tool is executed (name, result)
+            on_tool_call: Callback when a tool is executed (name, result or None for start)
+            on_token: Callback for streaming tokens (for real-time display)
         """
         self.client = elpis_client
         self.config = config or ServerConfig()
         self.on_thought = on_thought
         self.on_response = on_response
         self.on_tool_call = on_tool_call
+        self.on_token = on_token
 
         self._state = ServerState.IDLE
         self._compactor = ContextCompactor(
@@ -260,14 +263,20 @@ Keep responses helpful and conversational."""
         for iteration in range(self.config.max_tool_iterations):
             messages = self._compactor.get_api_messages()
 
-            # Generate response
+            # Generate response with streaming
             self._state = ServerState.THINKING
-            result = await self.client.generate(
+            response_tokens: List[str] = []
+
+            async for token in self.client.generate_stream(
                 messages=messages,
                 emotional_modulation=self.config.emotional_modulation,
-            )
+            ):
+                response_tokens.append(token)
+                # Stream token to UI callback
+                if self.on_token:
+                    self.on_token(token)
 
-            response_text = result.content
+            response_text = "".join(response_tokens)
 
             # Try to parse tool calls from the response
             tool_call = self._parse_tool_call(response_text)
@@ -289,12 +298,12 @@ Keep responses helpful and conversational."""
             # No tool call - this is the final response
             self._compactor.add_message(create_message("assistant", response_text))
 
-            # Notify callback
+            # Notify callback (tokens already streamed, this signals completion)
             if self.on_response:
                 self.on_response(response_text)
 
             # Update emotional state based on interaction
-            await self._update_emotion_for_interaction(result)
+            await self._update_emotion_for_interaction_text(response_text)
             return
 
         # Max iterations reached
@@ -370,6 +379,10 @@ Keep responses helpful and conversational."""
 
         logger.debug(f"Executing tool: {tool_name} with args: {arguments}")
 
+        # Notify callback at start (result=None indicates start)
+        if self.on_tool_call:
+            self.on_tool_call(tool_name, None)
+
         try:
             # Convert to the format expected by tool engine
             formatted_call = {
@@ -382,7 +395,7 @@ Keep responses helpful and conversational."""
             # Execute the tool
             result = await self._tool_engine.execute_tool_call(formatted_call)
 
-            # Notify callback
+            # Notify callback at end (with result)
             if self.on_tool_call:
                 self.on_tool_call(tool_name, result)
 
@@ -619,8 +632,12 @@ You MUST use the actual tools to see real data.
 
     async def _update_emotion_for_interaction(self, result: GenerationResult) -> None:
         """Update emotional state based on interaction quality."""
+        await self._update_emotion_for_interaction_text(result.content)
+
+    async def _update_emotion_for_interaction_text(self, content: str) -> None:
+        """Update emotional state based on response text length."""
         # Simple heuristic: longer, more engaged responses are positive
-        content_length = len(result.content)
+        content_length = len(content)
 
         if content_length > 500:
             await self.client.update_emotion("engagement", intensity=0.5)

@@ -161,6 +161,76 @@ class ElpisClient:
             modulated_params=result.get("modulated_params", {}),
         )
 
+    async def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: int = 2048,
+        temperature: Optional[float] = None,
+        emotional_modulation: bool = True,
+        poll_interval: float = 0.05,
+    ) -> AsyncIterator[str]:
+        """
+        Generate text completion with streaming.
+
+        Yields tokens as they are generated, enabling real-time display.
+
+        Args:
+            messages: Chat messages in OpenAI format
+            max_tokens: Maximum tokens to generate
+            temperature: Override temperature (None = emotionally modulated)
+            emotional_modulation: Whether to apply emotional parameter modulation
+            poll_interval: Seconds between polling for new tokens
+
+        Yields:
+            Individual tokens as they become available
+        """
+        # Start the streaming generation
+        start_args = {
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "emotional_modulation": emotional_modulation,
+        }
+        if temperature is not None:
+            start_args["temperature"] = temperature
+
+        start_result = await self._call_tool("generate_stream_start", start_args)
+
+        if "error" in start_result:
+            raise RuntimeError(f"Failed to start stream: {start_result['error']}")
+
+        stream_id = start_result["stream_id"]
+
+        # Poll for tokens until complete
+        try:
+            while True:
+                read_result = await self._call_tool(
+                    "generate_stream_read",
+                    {"stream_id": stream_id}
+                )
+
+                if "error" in read_result:
+                    raise RuntimeError(f"Stream error: {read_result['error']}")
+
+                # Yield new tokens
+                new_content = read_result.get("new_content", "")
+                if new_content:
+                    yield new_content
+
+                # Check if complete
+                if read_result.get("is_complete", False):
+                    break
+
+                # Wait before next poll
+                await asyncio.sleep(poll_interval)
+
+        except Exception:
+            # Try to cancel the stream on error
+            try:
+                await self._call_tool("generate_stream_cancel", {"stream_id": stream_id})
+            except Exception:
+                pass
+            raise
+
     async def function_call(
         self,
         messages: List[Dict[str, str]],

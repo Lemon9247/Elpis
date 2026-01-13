@@ -1,0 +1,105 @@
+/* Psyche TUI Stylesheet */
+
+/* Main layout */
+#main-container {
+    height: 100%;
+    width: 100%;
+}
+
+/* Sidebar */
+#sidebar {
+    width: 25;
+    height: 100%;
+    border: round $primary;
+    padding: 1;
+    background: $surface;
+}
+
+#emotion-display {
+    height: auto;
+    border: round $accent;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#status-display {
+    height: auto;
+    border: round $secondary;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#tool-activity {
+    height: auto;
+    min-height: 5;
+    border: round $warning;
+    padding: 1;
+}
+
+/* Content area */
+#content {
+    height: 100%;
+    width: 1fr;
+}
+
+#chat {
+    height: 1fr;
+    border: round $secondary;
+    padding: 1;
+    background: $surface;
+    scrollbar-color: $primary;
+}
+
+#chat.streaming {
+    border: dashed $warning;
+}
+
+/* Thought panel - hidden by default */
+#thoughts {
+    height: auto;
+    max-height: 30%;
+    border: round $accent;
+    padding: 1;
+    background: $surface;
+    display: none;
+}
+
+#thoughts.visible {
+    display: block;
+}
+
+/* User input */
+#input {
+    height: 3;
+    dock: bottom;
+    border: round $secondary;
+    background: $surface;
+    padding: 0 1;
+}
+
+#input:focus {
+    border: double $primary;
+}
+
+/* Header styling */
+Header {
+    background: $primary;
+}
+
+/* Footer styling */
+Footer {
+    background: $surface;
+}
+
+/* Tool status colors */
+.tool-running {
+    color: $warning;
+}
+
+.tool-complete {
+    color: $success;
+}
+
+.tool-error {
+    color: $error;
+}
