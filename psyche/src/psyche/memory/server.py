@@ -129,7 +129,7 @@ When you need to use a tool, respond with ONLY a JSON tool call in this exact fo
 
 For example, to list files:
 ```tool_call
-{{"name": "list_directory", "arguments": {{"path": ".", "recursive": false}}}}
+{{"name": "list_directory", "arguments": {{"dir_path": "."}}}}
 ```
 
 To run a bash command:
@@ -139,7 +139,7 @@ To run a bash command:
 
 To read a file:
 ```tool_call
-{{"name": "read_file", "arguments": {{"path": "example.txt"}}}}
+{{"name": "read_file", "arguments": {{"file_path": "example.txt"}}}}
 ```
 
 IMPORTANT: When using a tool, respond with ONLY the tool_call block, nothing else. The system will execute the tool and show you the result. Then you can provide your final response.
