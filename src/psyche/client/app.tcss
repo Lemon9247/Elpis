@@ -62,18 +62,18 @@
     height: auto;
 }
 
-/* Thought panel - hidden by default */
+/* Thought panel - visible by default */
 #thoughts {
     height: auto;
     max-height: 30%;
     border: round $accent;
     padding: 1;
     background: $surface;
-    display: none;
+    display: block;
 }
 
-#thoughts.visible {
-    display: block;
+#thoughts.hidden {
+    display: none;
 }
 
 /* User input */

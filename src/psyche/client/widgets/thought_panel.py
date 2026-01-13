@@ -11,13 +11,13 @@ class ThoughtPanel(RichLog):
     Shows the AI's internal reasoning and idle thoughts when enabled.
     """
 
-    visible: reactive[bool] = reactive(False)
+    visible: reactive[bool] = reactive(True)
 
     def __init__(self, *args, **kwargs):
         """Initialize thought panel."""
         super().__init__(*args, markup=True, highlight=True, wrap=True, max_lines=50, **kwargs)
         self.border_title = "Internal Thoughts"
-        self.display = False  # Start hidden
+        self.display = True  # Start visible
 
     def add_thought(self, content: str, thought_type: str = "reflection") -> None:
         """
@@ -45,9 +45,9 @@ class ThoughtPanel(RichLog):
         """React to visibility changes."""
         self.display = visible
         if visible:
-            self.add_class("visible")
+            self.remove_class("hidden")
         else:
-            self.remove_class("visible")
+            self.add_class("hidden")
 
     def show(self) -> None:
         """Show the thought panel."""

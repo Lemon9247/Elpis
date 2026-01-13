@@ -5,6 +5,23 @@ from pathlib import Path
 
 from loguru import logger
 
+# Configure logging IMMEDIATELY to capture any logs during subsequent imports
+# This MUST happen before importing any modules that use loguru
+def _setup_logging_early() -> None:
+    """Configure logging to file immediately to avoid TUI interference."""
+    logger.remove()  # Remove default stderr handler
+    log_dir = Path.home() / ".psyche"
+    log_dir.mkdir(exist_ok=True)
+    logger.add(
+        log_dir / "psyche.log",
+        level="DEBUG",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+        rotation="10 MB",
+    )
+
+_setup_logging_early()
+
+# Now safe to import modules that may use logging
 from psyche.client.app import PsycheApp
 from psyche.mcp.client import ElpisClient
 from psyche.memory.server import MemoryServer, ServerConfig
@@ -78,13 +95,22 @@ def main(
     # Create and run Textual app
     app = PsycheApp(memory_server=server)
 
+    # Redirect stderr to file to prevent any native library output from breaking TUI
+    # This catches llama-cpp-python and other C library output that bypasses Python logging
+    stderr_log = Path.home() / ".psyche" / "stderr.log"
+    original_stderr = sys.stderr
+
     try:
-        app.run()
+        with open(stderr_log, "a") as stderr_file:
+            sys.stderr = stderr_file
+            app.run()
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
     except Exception as e:
         logger.exception(f"Fatal error: {e}")
         sys.exit(1)
+    finally:
+        sys.stderr = original_stderr
 
 
 if __name__ == "__main__":
