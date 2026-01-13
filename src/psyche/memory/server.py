@@ -139,19 +139,21 @@ class MemoryServer:
 
 ## How to Use Tools
 
-When you need to use a tool, respond with ONLY a JSON tool call in this exact format:
+Think step by step as you work. When you need information or to perform an action:
+1. First, explain what you're going to do and why
+2. Use a tool by including a tool_call block
+3. After seeing the result, reflect on what you learned before continuing
+
+To use a tool, include this block in your response:
 ```tool_call
 {{"name": "tool_name", "arguments": {{"param1": "value1", "param2": "value2"}}}}
 ```
 
-For example, to list files:
+### Examples
+
+To list files:
 ```tool_call
 {{"name": "list_directory", "arguments": {{"dir_path": "."}}}}
-```
-
-To run a bash command:
-```tool_call
-{{"name": "execute_bash", "arguments": {{"command": "ls -la"}}}}
 ```
 
 To read a file:
@@ -159,16 +161,20 @@ To read a file:
 {{"name": "read_file", "arguments": {{"file_path": "example.txt"}}}}
 ```
 
-IMPORTANT: When using a tool, respond with ONLY the tool_call block, nothing else. The system will execute the tool and show you the result. Then you can provide your final response.
+To run a bash command:
+```tool_call
+{{"name": "execute_bash", "arguments": {{"command": "ls -la"}}}}
+```
 
 ## Guidelines
 
+- Think out loud - explain your reasoning as you work
 - Use tools when tasks require file operations, running commands, or searching code
 - Always read files before modifying them
 - Be careful with bash commands - prefer safe operations
-- After receiving tool results, provide a helpful summary for the user
+- After receiving tool results, summarize what you learned for the user
 
-Keep responses helpful and concise."""
+Keep responses helpful and conversational."""
 
     @property
     def state(self) -> ServerState:
@@ -581,10 +587,12 @@ Keep responses helpful and concise."""
         base_instruction = """[INTERNAL REFLECTION - NOT FOR USER]
 This is your private thinking time. The user will not see this response.
 
-IMPORTANT: Do NOT imagine or hallucinate file contents, directory listings,
-or command outputs. If you want to explore, you MUST use the actual tools.
+Think out loud as you explore. Follow this pattern:
+1. First, write your thoughts about what you want to investigate and why
+2. Then use a tool to gather information
+3. After seeing the result, reflect on what you learned before continuing
 
-To use a tool, respond with ONLY:
+To use a tool, include a tool_call block:
 ```tool_call
 {"name": "tool_name", "arguments": {...}}
 ```
@@ -592,16 +600,19 @@ To use a tool, respond with ONLY:
 Available tools: list_directory, read_file, search_codebase
 (No bash or write access during reflection)
 
+IMPORTANT: Do NOT imagine or hallucinate file contents or command outputs.
+You MUST use the actual tools to see real data.
+
 """
 
         prompts = [
-            base_instruction + "What exists in this workspace? Start by listing the directory.",
+            base_instruction + "What exists in this workspace? Think about what you're curious about, then explore.",
 
-            base_instruction + "What would you like to understand about this codebase? Use tools to investigate.",
+            base_instruction + "What would you like to understand about this codebase? Share your reasoning as you investigate.",
 
-            base_instruction + "Reflect on the conversation so far. Is there something you could look up to help?",
+            base_instruction + "Reflect on the conversation so far. What could you look up that might be helpful? Think through your approach.",
 
-            base_instruction + "Explore your surroundings. What files or patterns catch your interest?",
+            base_instruction + "Explore your surroundings. What catches your interest and why?",
         ]
 
         return random.choice(prompts)
