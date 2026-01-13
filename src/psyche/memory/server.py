@@ -236,22 +236,65 @@ Keep responses helpful and conversational."""
 
     async def _inference_loop(self) -> None:
         """Main continuous inference loop."""
+        idle_task: asyncio.Task | None = None
+
         while self._running:
             try:
-                # Check for user input with timeout
-                try:
-                    self._state = ServerState.WAITING_INPUT
-                    user_input = await asyncio.wait_for(
-                        self._input_queue.get(),
-                        timeout=self.config.idle_think_interval,
-                    )
-                    await self._process_user_input(user_input)
+                # If idle thinking is running, wait for either user input or idle completion
+                if idle_task is not None and not idle_task.done():
+                    self._state = ServerState.THINKING
+                    # Wait for either user input OR idle task completion
+                    input_task = asyncio.create_task(self._input_queue.get())
 
-                except asyncio.TimeoutError:
-                    # No user input - generate idle thought (no limit)
-                    await self._generate_idle_thought()
+                    done, pending = await asyncio.wait(
+                        [input_task, idle_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    if input_task in done:
+                        # User input arrived - cancel idle thinking and process input
+                        idle_task.cancel()
+                        try:
+                            await idle_task
+                        except asyncio.CancelledError:
+                            pass
+                        idle_task = None
+                        user_input = input_task.result()
+                        await self._process_user_input(user_input)
+                    else:
+                        # Idle task completed - cancel the input wait
+                        input_task.cancel()
+                        try:
+                            await input_task
+                        except asyncio.CancelledError:
+                            pass
+                        # Check for any exception in idle task
+                        try:
+                            idle_task.result()
+                        except Exception as e:
+                            logger.exception(f"Error in idle thinking: {e}")
+                        idle_task = None
+                else:
+                    # No idle task running - wait for input with timeout
+                    try:
+                        self._state = ServerState.WAITING_INPUT
+                        user_input = await asyncio.wait_for(
+                            self._input_queue.get(),
+                            timeout=self.config.idle_think_interval,
+                        )
+                        await self._process_user_input(user_input)
+
+                    except asyncio.TimeoutError:
+                        # No user input - start idle thinking as background task
+                        idle_task = asyncio.create_task(self._generate_idle_thought())
 
             except asyncio.CancelledError:
+                if idle_task:
+                    idle_task.cancel()
+                    try:
+                        await idle_task
+                    except asyncio.CancelledError:
+                        pass
                 break
             except Exception as e:
                 logger.exception(f"Error in inference loop: {e}")
