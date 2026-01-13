@@ -3,14 +3,14 @@ import pytest
 import shutil
 from pathlib import Path
 
-from elpis.config.settings import Settings
-from elpis.tools.implementations.search_tool import SearchTool
+from psyche.tools.tool_engine import ToolSettings
+from psyche.tools.implementations.search_tool import SearchTool
 
 
 @pytest.fixture
 def settings():
     """Create test settings."""
-    return Settings()
+    return ToolSettings()
 
 
 @pytest.fixture

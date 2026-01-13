@@ -2,15 +2,14 @@
 import pytest
 from pathlib import Path
 
-from elpis.config.settings import Settings
-from elpis.tools.implementations.directory_tool import DirectoryTool
-from elpis.utils.exceptions import PathSafetyError
+from psyche.tools.tool_engine import ToolSettings
+from psyche.tools.implementations.directory_tool import DirectoryTool, PathSafetyError
 
 
 @pytest.fixture
 def settings():
     """Create test settings."""
-    return Settings()
+    return ToolSettings()
 
 
 @pytest.fixture

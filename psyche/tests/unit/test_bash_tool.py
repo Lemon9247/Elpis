@@ -2,23 +2,14 @@
 import pytest
 from pathlib import Path
 
-from elpis.config.settings import Settings
-from elpis.tools.implementations.bash_tool import BashTool
-from elpis.utils.exceptions import CommandSafetyError
+from psyche.tools.tool_engine import ToolSettings
+from psyche.tools.implementations.bash_tool import BashTool, CommandSafetyError
 
 
 @pytest.fixture
 def settings():
     """Create test settings."""
-    return Settings()
-
-
-@pytest.fixture
-def settings_dangerous():
-    """Create test settings with dangerous commands enabled."""
-    s = Settings()
-    s.tools.enable_dangerous_commands = True
-    return s
+    return ToolSettings()
 
 
 @pytest.fixture
@@ -36,9 +27,11 @@ def bash_tool(workspace_dir, settings):
 
 
 @pytest.fixture
-def bash_tool_dangerous(workspace_dir, settings_dangerous):
+def bash_tool_dangerous(workspace_dir, settings):
     """Create BashTool instance with dangerous commands enabled."""
-    return BashTool(workspace_dir, settings_dangerous)
+    tool = BashTool(workspace_dir, settings)
+    tool.enable_dangerous_commands = True
+    return tool
 
 
 class TestCommandSafety:
@@ -183,8 +176,8 @@ class TestExecuteBash:
     async def test_timeout_long_running_command(self, bash_tool, settings):
         """Test that long-running commands timeout."""
         # Set a short timeout for testing
-        original_timeout = settings.tools.max_bash_timeout
-        settings.tools.max_bash_timeout = 1
+        original_timeout = settings.bash_timeout
+        settings.bash_timeout = 1
 
         result = await bash_tool.execute_bash('sleep 10')
 
@@ -192,7 +185,7 @@ class TestExecuteBash:
         assert 'timeout' in result['error'].lower()
 
         # Restore original timeout
-        settings.tools.max_bash_timeout = original_timeout
+        settings.bash_timeout = original_timeout
 
     @pytest.mark.asyncio
     async def test_command_field_in_result(self, bash_tool):

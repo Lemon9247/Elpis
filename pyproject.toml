@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elpis"
 version = "0.1.0"
-description = "Emotional coding agent with biologically-inspired memory and emotional modulation"
+description = "MCP inference server with emotional regulation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0"}
 authors = [{name = "Willow Sparks", email = "willow.sparks@gmail.com"}]
-keywords = ["ai", "coding", "llm", "memory", "emotion", "agent"]
+keywords = ["ai", "llm", "mcp", "inference", "emotion"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -52,7 +52,6 @@ rocm = [
 ]
 
 [project.scripts]
-elpis = "elpis.cli:main"
 elpis-server = "elpis.server:main"
 
 [tool.setuptools]

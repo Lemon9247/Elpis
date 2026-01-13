@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from elpis.tools.tool_definitions import (
+from psyche.tools.tool_definitions import (
     ToolInput,
     ReadFileInput,
     WriteFileInput,

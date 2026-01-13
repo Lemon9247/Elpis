@@ -3,14 +3,13 @@ import pytest
 import json
 from pathlib import Path
 
-from elpis.config.settings import Settings
-from elpis.tools.tool_engine import ToolEngine
+from psyche.tools.tool_engine import ToolEngine, ToolSettings
 
 
 @pytest.fixture
 def settings():
     """Create test settings."""
-    return Settings()
+    return ToolSettings()
 
 
 @pytest.fixture
@@ -40,7 +39,7 @@ class TestToolEngineInitialization:
         """Test that workspace directory is created if it doesn't exist."""
         # Create engine with non-existent workspace
         new_workspace = workspace_dir / "new_workspace"
-        settings = Settings()
+        settings = ToolSettings()
 
         engine = ToolEngine(str(new_workspace), settings)
 
@@ -341,7 +340,7 @@ class TestSanitizePath:
 
     def test_sanitize_path_outside_workspace_raises(self, tool_engine):
         """Test that paths outside workspace raise error."""
-        from elpis.utils.exceptions import ToolExecutionError
+        from psyche.tools.tool_engine import ToolExecutionError
 
         with pytest.raises(ToolExecutionError):
             tool_engine.sanitize_path('/etc/passwd')

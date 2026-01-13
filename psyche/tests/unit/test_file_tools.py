@@ -2,15 +2,14 @@
 import pytest
 from pathlib import Path
 
-from elpis.config.settings import Settings
-from elpis.tools.implementations.file_tools import FileTools
-from elpis.utils.exceptions import PathSafetyError
+from psyche.tools.tool_engine import ToolSettings
+from psyche.tools.implementations.file_tools import FileTools, PathSafetyError
 
 
 @pytest.fixture
 def settings():
     """Create test settings."""
-    return Settings()
+    return ToolSettings()
 
 
 @pytest.fixture
@@ -126,7 +125,7 @@ class TestReadFile:
         """Test reading file larger than max size."""
         # Create large file
         test_file = workspace_dir / 'large.txt'
-        large_content = 'x' * (settings.tools.max_file_size + 1000)
+        large_content = 'x' * (settings.max_file_size + 1000)
         test_file.write_text(large_content)
 
         result = await file_tools.read_file('large.txt')
