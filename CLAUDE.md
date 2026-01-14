@@ -1,10 +1,63 @@
+# Repository Map
+
+```
+Elpis/
+├── src/                        # Main source code
+│   ├── elpis/                  # Inference MCP server
+│   │   ├── cli.py              # CLI entry point (elpis-server)
+│   │   ├── server.py           # MCP server implementation
+│   │   ├── config/             # Settings and configuration
+│   │   ├── emotion/            # Emotional state and regulation
+│   │   │   ├── state.py        # Valence-arousal model
+│   │   │   └── regulation.py   # Homeostasis and event processing
+│   │   ├── llm/                # Inference backends
+│   │   │   ├── base.py         # InferenceEngine ABC
+│   │   │   ├── inference.py    # llama-cpp backend
+│   │   │   └── transformers_inference.py  # Transformers + steering vectors
+│   │   └── utils/              # Shared utilities
+│   ├── mnemosyne/              # Memory MCP server
+│   │   ├── cli.py              # CLI entry point (mnemosyne-server)
+│   │   ├── server.py           # MCP server implementation
+│   │   ├── core/models.py      # Memory data structures
+│   │   └── storage/            # ChromaDB storage backend
+│   └── psyche/                 # TUI client
+│       ├── cli.py              # CLI entry point (psyche)
+│       ├── client/             # Textual UI components
+│       ├── mcp/                # MCP client utilities
+│       ├── memory/             # Memory integration
+│       └── tools/              # Tool implementations
+├── tests/                      # Test suite
+├── scripts/                    # Utility scripts
+│   └── train_emotion_vectors.py  # Train steering vectors
+├── configs/                    # Configuration templates
+├── data/                       # Data files (models, vectors)
+├── scratchpad/                 # Working notes and session logs
+│   ├── reports/                # Session reports
+│   └── archive/                # Historical docs
+├── pyproject.toml              # Package configuration
+├── README.md                   # Project documentation
+└── QUICKSTART.md               # Quick start guide
+```
+
+## Key Entry Points
+
+- `elpis-server` - Inference MCP server with emotional modulation
+- `mnemosyne-server` - Memory MCP server with ChromaDB
+- `psyche` - TUI client for interacting with the system
+
+## Backends
+
+- **llama-cpp** (default): Modulates sampling parameters (temperature/top_p)
+- **transformers**: Uses steering vectors for direct activation modulation
+
+
 # Work Planning
 
 1) All project notes, work logs and reports can be found in the scratchpad folder
 
 2) When Claude first starts, it should review the latest work on the project by reviewing the git history and anything recent in the scratchpad
 
-3) When Claude is finished working on a long task, it should write a report on its work into a new timestamped markdown file in the scratchpad
+3) When Claude is finished working on a long task, it should write a report on its work into a new timestamped markdown file in the scratchpad/reports folder
 
 
 # Programming Tasks
