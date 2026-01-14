@@ -146,6 +146,59 @@ class ListDirectoryInput(ToolInput):
         return v
 
 
+class RecallMemoryInput(ToolInput):
+    """Input model for recall_memory tool."""
+    query: str = Field(description="Search query to find relevant memories")
+    n_results: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of memories to retrieve (1-20)"
+    )
+
+    @field_validator('query')
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        """Validate query is not empty."""
+        if not v.strip():
+            raise ValueError("Query cannot be empty")
+        return v
+
+
+class StoreMemoryInput(ToolInput):
+    """Input model for store_memory tool."""
+    content: str = Field(description="Content of the memory to store")
+    summary: Optional[str] = Field(
+        default=None,
+        description="Brief summary of the memory (auto-generated if not provided)"
+    )
+    memory_type: str = Field(
+        default="episodic",
+        description="Type of memory: episodic (events), semantic (facts), procedural (how-to), emotional (feelings)"
+    )
+    tags: Optional[list[str]] = Field(
+        default=None,
+        description="Optional tags to categorize the memory"
+    )
+
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v: str) -> str:
+        """Validate content is not empty."""
+        if not v.strip():
+            raise ValueError("Content cannot be empty")
+        return v
+
+    @field_validator('memory_type')
+    @classmethod
+    def validate_memory_type(cls, v: str) -> str:
+        """Validate memory type."""
+        valid_types = {"episodic", "semantic", "procedural", "emotional"}
+        if v not in valid_types:
+            raise ValueError(f"memory_type must be one of: {', '.join(valid_types)}")
+        return v
+
+
 class ToolDefinition:
     """Schema definition for a single tool."""
 

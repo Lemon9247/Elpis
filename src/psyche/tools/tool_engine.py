@@ -217,6 +217,16 @@ class ToolEngine:
             handler=directory_tool.list_directory,
         )
 
+    def register_tool(self, tool_def: ToolDefinition) -> None:
+        """
+        Register an additional tool at runtime.
+
+        Args:
+            tool_def: ToolDefinition to register
+        """
+        self.tools[tool_def.name] = tool_def
+        logger.debug(f"Registered tool: {tool_def.name}")
+
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         """
         Return OpenAI-compatible tool schemas.

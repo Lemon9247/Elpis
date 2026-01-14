@@ -13,10 +13,12 @@ from loguru import logger
 from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult, MnemosyneClient
 from psyche.memory.compaction import CompactionResult, ContextCompactor, Message, create_message
 from psyche.tools.tool_engine import ToolEngine, ToolSettings
+from psyche.tools.tool_definitions import ToolDefinition, RecallMemoryInput, StoreMemoryInput
+from psyche.tools.implementations.memory_tools import MemoryTools
 
 
 # Tools that are safe for autonomous idle reflection (read-only)
-SAFE_IDLE_TOOLS: Set[str] = {"read_file", "list_directory", "search_codebase"}
+SAFE_IDLE_TOOLS: Set[str] = {"read_file", "list_directory", "search_codebase", "recall_memory"}
 
 # Sensitive paths that should never be accessed during idle reflection
 SENSITIVE_PATH_PATTERNS: Set[str] = {
@@ -156,8 +158,80 @@ class MemoryServer:
             settings=ToolSettings(),
         )
 
+        # Register memory tools if Mnemosyne client is available
+        if self.mnemosyne_client:
+            self._register_memory_tools()
+
         # System prompt for the continuous agent
         self._system_prompt = self._build_system_prompt()
+
+    def _register_memory_tools(self) -> None:
+        """Register memory tools with the tool engine."""
+        if not self.mnemosyne_client:
+            return
+
+        # Create memory tools instance with emotion getter
+        memory_tools = MemoryTools(
+            mnemosyne_client=self.mnemosyne_client,
+            get_emotion_fn=self.client.get_emotion,
+        )
+
+        # Register recall_memory tool
+        self._tool_engine.register_tool(ToolDefinition(
+            name="recall_memory",
+            description="Search and recall memories from long-term storage. Use this to remember past conversations, facts, or experiences.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query to find relevant memories",
+                    },
+                    "n_results": {
+                        "type": "integer",
+                        "description": "Number of memories to retrieve (1-20, default: 5)",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+            input_model=RecallMemoryInput,
+            handler=memory_tools.recall_memory,
+        ))
+
+        # Register store_memory tool
+        self._tool_engine.register_tool(ToolDefinition(
+            name="store_memory",
+            description="Store a new memory for later recall. Use this to remember important information, facts, or experiences.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Content of the memory to store",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Brief summary of the memory (auto-generated if not provided)",
+                    },
+                    "memory_type": {
+                        "type": "string",
+                        "description": "Type of memory: episodic (events), semantic (facts), procedural (how-to), emotional (feelings)",
+                        "default": "episodic",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional tags to categorize the memory",
+                    },
+                },
+                "required": ["content"],
+            },
+            input_model=StoreMemoryInput,
+            handler=memory_tools.store_memory,
+        ))
+
+        logger.info("Memory tools registered: recall_memory, store_memory")
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the agent."""
@@ -175,8 +249,12 @@ Respond naturally and conversationally. Most messages just need a direct respons
 - Run commands or scripts
 - Search the codebase
 - List directory contents
+- Remember something important (store_memory)
+- Recall past conversations or facts (recall_memory)
 
 For greetings, questions, discussion, or general conversation - just respond directly. Do not use tools unless the task genuinely requires them.
+
+**Memory Tools:** You have access to long-term memory. Use `recall_memory` to search for relevant past experiences or knowledge. Use `store_memory` to save important information you want to remember later.
 
 ## Tool Usage
 
