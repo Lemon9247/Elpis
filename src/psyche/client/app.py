@@ -78,6 +78,10 @@ class PsycheApp(App):
         # Focus the input
         self.query_one("#input", UserInput).focus()
 
+        # Small delay to let Textual fully initialize before spawning subprocesses
+        # This helps avoid race conditions with event loop setup
+        await asyncio.sleep(0.1)
+
         # Start the memory server in the background
         self._server_task = asyncio.create_task(self._run_server())
 
@@ -85,23 +89,33 @@ class PsycheApp(App):
         self.set_interval(1.0, self._update_emotional_display)
 
     async def _run_server(self) -> None:
-        """Run the memory server as a background task."""
-        try:
-            await self.memory_server.start()
-        except asyncio.CancelledError:
-            # Normal shutdown, don't show error
-            pass
-        except Exception as e:
-            # Server died unexpectedly - try to show error if widgets are mounted
+        """Run the memory server as a background task with retry logic."""
+        from loguru import logger
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
             try:
-                chat = self.query_one("#chat", ChatView)
-                chat.add_system_message(f"[CRITICAL] Server error: {e}")
-            except Exception:
-                # Widgets not mounted yet, log instead
-                from loguru import logger
-                logger.error(f"Server error (widgets not ready): {e}")
-            # Mark server as dead for health checks
-            self._server_task = None
+                await self.memory_server.start()
+                return  # Server ran and exited normally
+            except asyncio.CancelledError:
+                # Normal shutdown, don't retry
+                return
+            except Exception as e:
+                error_msg = f"{type(e).__name__}: {e}"
+                if attempt < max_retries - 1:
+                    logger.warning(f"Server connection failed (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Final attempt failed
+                    logger.error(f"Server failed after {max_retries} attempts: {error_msg}")
+                    try:
+                        chat = self.query_one("#chat", ChatView)
+                        chat.add_system_message(f"[CRITICAL] Server error: {e}")
+                    except Exception:
+                        pass  # Widgets not ready
+                    self._server_task = None
 
     def _on_token(self, token: str) -> None:
         """Handle streaming token callback."""
