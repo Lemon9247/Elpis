@@ -982,20 +982,127 @@ You MUST use the actual tools to see real data.
         except Exception as e:
             logger.error(f"Memory consolidation failed: {e}")
 
-    async def _store_messages_to_mnemosyne(self, messages: List[Message]) -> None:
+    async def _summarize_conversation(self, messages: List[Message]) -> str:
+        """
+        Use Elpis to generate a conversation summary.
+
+        Args:
+            messages: List of messages to summarize
+
+        Returns:
+            Summary string, or empty string on failure
+        """
+        if not messages:
+            return ""
+
+        try:
+            # Build conversation text for summarization
+            conversation_parts = []
+            for msg in messages:
+                if msg.role == "system":
+                    continue
+                # Truncate very long messages for summarization
+                content = msg.content[:500] if len(msg.content) > 500 else msg.content
+                conversation_parts.append(f"{msg.role}: {content}")
+
+            if not conversation_parts:
+                return ""
+
+            conversation_text = "\n".join(conversation_parts)
+
+            # Use Elpis to generate summary
+            summary_prompt = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Summarize this conversation concisely. Extract key facts, "
+                        "decisions, topics discussed, and important details. "
+                        "Focus on information worth remembering long-term."
+                    ),
+                },
+                {"role": "user", "content": conversation_text},
+            ]
+
+            result = await self.client.generate(
+                messages=summary_prompt,
+                max_tokens=500,
+                temperature=0.3,
+            )
+
+            summary = result.content.strip()
+            logger.debug(f"Generated conversation summary: {len(summary)} chars")
+            return summary
+
+        except Exception as e:
+            logger.error(f"Failed to generate conversation summary: {e}")
+            return ""
+
+    async def _store_conversation_summary(self, messages: List[Message]) -> bool:
+        """
+        Generate and store a conversation summary as semantic memory.
+
+        Args:
+            messages: List of messages to summarize
+
+        Returns:
+            True if summary stored successfully, False otherwise
+        """
+        if not self.mnemosyne_client or not self.mnemosyne_client.is_connected:
+            return False
+
+        summary = await self._summarize_conversation(messages)
+        if not summary:
+            logger.debug("No summary generated, skipping storage")
+            return False
+
+        try:
+            # Get current emotional context
+            emotion = await self.client.get_emotion()
+
+            await self.mnemosyne_client.store_memory(
+                content=summary,
+                summary=summary[:100] + "..." if len(summary) > 100 else summary,
+                memory_type="semantic",  # Semantic memory for distilled knowledge
+                tags=["conversation_summary", "shutdown"],
+                emotional_context={
+                    "valence": emotion.valence,
+                    "arousal": emotion.arousal,
+                    "quadrant": emotion.quadrant,
+                },
+            )
+            logger.info("Stored conversation summary as semantic memory")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to store conversation summary: {e}")
+            return False
+
+    async def _store_messages_to_mnemosyne(self, messages: List[Message]) -> bool:
         """
         Store messages to Mnemosyne short-term memory.
 
         Args:
             messages: List of messages to store as episodic memories
+
+        Returns:
+            True if all messages stored successfully, False otherwise
         """
         if not self.mnemosyne_client:
-            return
+            logger.warning("No Mnemosyne client, cannot store messages")
+            return False
+
+        if not self.mnemosyne_client.is_connected:
+            logger.warning("Mnemosyne not connected, cannot store messages")
+            return False
+
+        success_count = 0
+        total_count = 0
 
         for msg in messages:
             if msg.role == "system":
                 continue  # Skip system prompts
 
+            total_count += 1
             try:
                 # Get current emotional context
                 emotion = await self.client.get_emotion()
@@ -1011,9 +1118,15 @@ You MUST use the actual tools to see real data.
                         "quadrant": emotion.quadrant,
                     },
                 )
+                success_count += 1
                 logger.debug(f"Stored {msg.role} message to Mnemosyne")
             except Exception as e:
                 logger.error(f"Failed to store message to Mnemosyne: {e}")
+
+        if total_count == 0:
+            return True  # No messages to store is a success
+
+        return success_count == total_count
 
     async def _handle_compaction_result(self, result: CompactionResult) -> None:
         """
@@ -1028,19 +1141,27 @@ You MUST use the actual tools to see real data.
         # Store previously staged messages to Mnemosyne
         if self._staged_messages and self.mnemosyne_client:
             logger.debug(f"Storing {len(self._staged_messages)} staged messages to Mnemosyne")
-            await self._store_messages_to_mnemosyne(self._staged_messages)
+            success = await self._store_messages_to_mnemosyne(self._staged_messages)
+            if success:
+                # Only clear staged messages if storage succeeded
+                self._staged_messages = []
+            else:
+                logger.error(
+                    f"Failed to store {len(self._staged_messages)} staged messages, "
+                    "will retry on next compaction"
+                )
 
-        # Stage newly dropped messages for next compaction cycle
-        self._staged_messages = result.dropped_messages
-        if self._staged_messages:
-            logger.debug(f"Staged {len(self._staged_messages)} messages for next cycle")
+        # Stage newly dropped messages (append to any failed messages)
+        if result.dropped_messages:
+            self._staged_messages.extend(result.dropped_messages)
+            logger.debug(f"Staged {len(result.dropped_messages)} new messages, total staged: {len(self._staged_messages)}")
 
     async def shutdown_with_consolidation(self) -> None:
         """
         Graceful shutdown with memory consolidation.
 
         Stores all staged and remaining context messages to Mnemosyne,
-        then runs consolidation before shutdown.
+        generates a conversation summary, then runs consolidation before shutdown.
         """
         logger.info("Starting graceful shutdown with memory consolidation...")
 
@@ -1048,18 +1169,30 @@ You MUST use the actual tools to see real data.
             logger.debug("No Mnemosyne client, skipping memory consolidation")
             return
 
+        if not self.mnemosyne_client.is_connected:
+            logger.warning("Mnemosyne not connected, skipping shutdown consolidation")
+            return
+
         try:
             # Store any staged messages
             if self._staged_messages:
                 logger.debug(f"Storing {len(self._staged_messages)} staged messages")
-                await self._store_messages_to_mnemosyne(self._staged_messages)
-                self._staged_messages = []
+                success = await self._store_messages_to_mnemosyne(self._staged_messages)
+                if success:
+                    self._staged_messages = []
+                else:
+                    logger.error(f"Failed to store {len(self._staged_messages)} staged messages during shutdown")
 
             # Store remaining context messages (non-system)
             remaining = [m for m in self._compactor.messages if m.role != "system"]
             if remaining:
                 logger.debug(f"Storing {len(remaining)} remaining context messages")
                 await self._store_messages_to_mnemosyne(remaining)
+
+            # Generate and store conversation summary
+            all_messages = self._staged_messages + remaining
+            if all_messages:
+                await self._store_conversation_summary(all_messages)
 
             # Run consolidation
             logger.info("Running shutdown consolidation...")
