@@ -1,18 +1,22 @@
 """Pydantic settings models for Elpis configuration."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ModelSettings(BaseSettings):
-    """LLM configuration."""
+    """LLM configuration (llama-cpp backend)."""
 
+    backend: Literal["llama-cpp", "transformers"] = Field(
+        default="llama-cpp",
+        description="Inference backend: llama-cpp (GGUF) or transformers (HuggingFace)",
+    )
     path: str = Field(
         default="./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf",
-        description="Path to GGUF model file",
+        description="Path to GGUF model file or HuggingFace model ID",
     )
     context_length: int = Field(
         default=32768,
@@ -27,6 +31,22 @@ class ModelSettings(BaseSettings):
     max_tokens: int = Field(default=4096, ge=1, le=32768)
     hardware_backend: str = Field(
         default="auto", description="Hardware backend: auto, cuda, rocm, cpu"
+    )
+
+    # Transformers-specific settings
+    torch_dtype: str = Field(
+        default="auto",
+        description="Torch dtype for transformers: auto, float16, bfloat16, float32",
+    )
+    steering_layer: int = Field(
+        default=15,
+        ge=0,
+        le=80,
+        description="Layer to apply steering vectors (transformers only)",
+    )
+    emotion_vectors_dir: Optional[str] = Field(
+        default=None,
+        description="Directory containing trained emotion vectors (.pt files)",
     )
 
     model_config = SettingsConfigDict(env_prefix="ELPIS_MODEL_")

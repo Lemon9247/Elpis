@@ -19,6 +19,7 @@ from mcp.types import (
 from elpis.config.settings import Settings
 from elpis.emotion.state import EmotionalState
 from elpis.emotion.regulation import HomeostasisRegulator
+from elpis.llm.base import InferenceEngine
 from elpis.llm.inference import LlamaInference
 
 
@@ -32,7 +33,7 @@ class StreamState:
 
 
 # Global state (initialized at startup)
-llm: Optional[LlamaInference] = None
+llm: Optional[InferenceEngine] = None
 emotion_state: Optional[EmotionalState] = None
 regulator: Optional[HomeostasisRegulator] = None
 server = Server("elpis-inference")
@@ -528,9 +529,21 @@ def initialize(settings: Optional[Settings] = None) -> None:
     regulator = HomeostasisRegulator(emotion_state)
     logger.info("Emotional system initialized")
 
-    # Initialize LLM
-    llm = LlamaInference(settings.model)
-    logger.info("LLM initialized")
+    # Initialize LLM based on backend setting
+    if settings.model.backend == "transformers":
+        try:
+            from elpis.llm.transformers_inference import TransformersInference
+            llm = TransformersInference(settings.model)
+            logger.info("TransformersInference initialized")
+        except ImportError as e:
+            logger.error(
+                f"Failed to import TransformersInference: {e}. "
+                "Install with: pip install torch transformers"
+            )
+            raise
+    else:
+        llm = LlamaInference(settings.model)
+        logger.info("LlamaInference initialized")
 
 
 async def run_server() -> None:
