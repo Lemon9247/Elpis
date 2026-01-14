@@ -326,7 +326,7 @@ class ToolEngine:
             List of execution results in the same order as inputs
         """
         tasks = [self.execute_tool_call(call) for call in tool_calls]
-        return await asyncio.gather(*tasks, return_exceptions=False)
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
     def sanitize_path(self, path: str) -> Path:
         """
