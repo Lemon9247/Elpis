@@ -100,3 +100,37 @@ n_threads = 1
 2. Even with GPU offloading, some ops run on CPU - threading bugs still affect hybrid execution
 3. VRAM budget must account for: model layers + KV cache + compute buffers
 4. `coredumpctl` is invaluable for diagnosing native library crashes that bypass Python exception handling
+
+---
+
+## Update: Root Cause Analysis (Late Session)
+
+After extensive debugging (crashes continued even with all env var fixes), we identified the **true root cause**:
+
+### The Real Problem
+
+The threading bridge in `_stream_in_thread()` is fundamentally broken:
+- Model loads on main thread
+- Streaming runs in worker thread via `threading.Thread`
+- `llama_context` is NOT thread-safe (confirmed by llama.cpp maintainers)
+- CUDA contexts are thread-local
+
+### Why Our Fixes Didn't Work
+
+| Fix Attempted | Why It Failed |
+|--------------|---------------|
+| `n_threads=1` | Only affects llama.cpp's internal thread pool, not our Python thread |
+| `OMP_NUM_THREADS=1` | Disabled OpenMP, but our Python thread still accesses CUDA context |
+| `GGML_CUDA_DISABLE_GRAPHS=1` | Disabled graph optimization, but core thread-safety issue remains |
+
+### Planned Solution
+
+See: `scratchpad/plans/2026-01-14-streaming-stability-plan.md`
+
+**Option A (Recommended)**: Remove threading entirely - iterate sync generator directly with `await asyncio.sleep(0)` between tokens for cooperative yielding.
+
+**Option B (Fallback)**: True multiprocessing if Option A is insufficient.
+
+### Key Insight
+
+Elpis is ALREADY a subprocess of Psyche (process isolation exists). The problem is threading INSIDE Elpis. The MCP polling mechanism can handle async communication without internal threading.
