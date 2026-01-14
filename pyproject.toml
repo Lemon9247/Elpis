@@ -23,6 +23,7 @@ classifiers = [
 
 dependencies = [
     "elpis-inference",              # Extracted inference server package
+    "mnemosyne",                    # Extracted memory server package
     "prompt-toolkit>=3.0.52",       # Async REPL
     "rich>=13.0",                   # Output formatting
     "textual>=0.47.0",              # TUI framework
