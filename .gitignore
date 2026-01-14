@@ -64,7 +64,6 @@ data/models/*.safetensors
 
 # Memory databases (will be generated)
 data/memory/
-memory/
 
 # Local configuration
 configs/config.local.toml
