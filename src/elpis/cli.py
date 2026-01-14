@@ -10,6 +10,12 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
+# Disable CUDA graph optimization to prevent crashes with multi-threaded access
+# See: https://github.com/ggml-org/llama.cpp/issues/11804
+# llama_context is not thread-safe; disabling CUDA graphs prevents race conditions
+# when streaming uses a separate thread for inference
+os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
+
 import asyncio
 import sys
 

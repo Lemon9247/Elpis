@@ -28,8 +28,16 @@ Signal: 11 (SEGV)
    os.environ.setdefault("MKL_NUM_THREADS", "1")
    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
    ```
+3. **Disable CUDA graph optimization** (critical for streaming):
+   ```python
+   os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
+   ```
 
-The environment variables are critical because `n_threads=1` alone doesn't fully disable OpenMP - it only affects llama.cpp's worker pool, but OpenMP can still spawn threads internally for certain operations.
+The environment variables are critical because:
+- `n_threads=1` alone doesn't fully disable OpenMP
+- **`llama_context` is NOT thread-safe** - streaming uses a separate Python thread
+- CUDA graph optimization causes race conditions when the context is accessed from multiple threads
+- See: https://github.com/ggml-org/llama.cpp/issues/11804
 
 ### 3. No GPU Offloading
 **Problem**: Despite `gpu_layers=35` config, `llama_supports_gpu_offload()` returned `False`. All 32 layers were running on CPU because llama-cpp-python was built without CUDA support.

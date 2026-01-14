@@ -29,6 +29,11 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
+# Disable CUDA graph optimization to prevent crashes with multi-threaded access
+# llama_context is not thread-safe; streaming uses a separate thread
+# See: https://github.com/ggml-org/llama.cpp/issues/11804
+os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
+
 import asyncio
 import queue
 import threading
