@@ -5,6 +5,7 @@
 
 import os
 import sys
+from datetime import datetime
 
 # -- Path setup --------------------------------------------------------------
 
@@ -14,9 +15,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 # -- Project information -----------------------------------------------------
 
 project = "Elpis"
-copyright = "2024, Willow Sparks"
+copyright = f"{datetime.now().year}, Willow Sparks"
 author = "Willow Sparks"
-release = "0.1.0"
+release = "1.0.0"
 
 # -- General configuration ---------------------------------------------------
 
