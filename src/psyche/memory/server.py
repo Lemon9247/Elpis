@@ -399,9 +399,21 @@ When you need a tool, use this format and then STOP:
                             await idle_task
                         except asyncio.CancelledError:
                             pass
+                        except Exception as e:
+                            # Log any other errors during cancellation (like RuntimeError)
+                            import traceback
+                            logger.warning(f"Error during idle task cancellation: {type(e).__name__}: {e}")
+                            logger.debug(traceback.format_exc())
                         idle_task = None
                         user_input = input_task.result()
-                        await self._process_user_input(user_input)
+                        try:
+                            await self._process_user_input(user_input)
+                        except RuntimeError as e:
+                            if "dictionary" in str(e).lower():
+                                import traceback
+                                logger.error(f"Dictionary iteration error during input processing: {e}")
+                                logger.error(traceback.format_exc())
+                            raise
                     else:
                         # Idle task completed - cancel the input wait
                         logger.debug("Idle thinking completed")
