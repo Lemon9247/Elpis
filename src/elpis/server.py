@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import signal
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -614,21 +615,39 @@ async def run_server() -> None:
     """Run the MCP server."""
     logger.info("Starting Elpis MCP server...")
 
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            logger.debug("stdio streams connected, running MCP server...")
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options(),
+            )
+            logger.debug("MCP server.run() completed")
+    except Exception as e:
+        logger.error(f"MCP server error: {type(e).__name__}: {e}")
+        raise
+    finally:
+        logger.info("MCP server shutting down")
 
 
 def main() -> None:
     """Main entry point for elpis-server command."""
+    # Set up signal handlers for diagnostics
+    def signal_handler(signum: int, frame: Any) -> None:
+        sig_name = signal.Signals(signum).name
+        logger.warning(f"Received signal {sig_name} ({signum})")
+        sys.exit(128 + signum)
+
+    # Only handle SIGTERM - SIGINT is handled by asyncio
+    signal.signal(signal.SIGTERM, signal_handler)
+
     try:
         initialize()
         asyncio.run(run_server())
+        logger.info("Server exited normally")
     except KeyboardInterrupt:
-        logger.info("Server stopped by user")
+        logger.info("Server stopped by user (SIGINT)")
     except Exception as e:
         logger.exception(f"Server error: {e}")
         sys.exit(1)

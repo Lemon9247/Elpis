@@ -151,6 +151,9 @@ class MemoryServer:
         self._last_user_interaction: float = 0.0  # Track last user input time
         self._last_consolidation_check: float = 0.0  # Track last consolidation check
 
+        # Connection state tracking for diagnostics
+        self._connection_lost: bool = False
+
         # Staged messages buffer for delayed Mnemosyne storage
         # Messages are staged for one compaction cycle before being stored
         self._staged_messages: List[Message] = []
@@ -852,7 +855,12 @@ When you need a tool, use this format and then STOP:
                 logger.warning(f"Idle thought generation timed out after {self.config.generation_timeout}s")
                 return
             except Exception as e:
-                logger.error(f"Idle thought generation failed: {e}")
+                error_msg = str(e) if str(e) else type(e).__name__
+                logger.error(f"Idle thought generation failed: {error_msg}")
+                if "Connection closed" in str(e) or "closed" in str(e).lower():
+                    logger.warning("Server connection lost during idle thinking - server may have crashed")
+                    # Mark client as needing reconnection
+                    self._connection_lost = True
                 return
 
             response_text = result.content

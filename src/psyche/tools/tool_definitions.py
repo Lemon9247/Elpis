@@ -1,6 +1,6 @@
 """Tool definitions with Pydantic models for input validation."""
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional, Callable, Dict, Any, Type
+from typing import Any, Callable, Dict, Optional, Type
 
 
 class ToolInput(BaseModel):
@@ -179,6 +179,11 @@ class StoreMemoryInput(ToolInput):
     tags: Optional[list[str]] = Field(
         default=None,
         description="Optional tags to categorize the memory"
+    )
+    # Accept emotional_context from LLM but ignore it - implementation auto-fetches current state
+    emotional_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Emotional context (ignored - auto-populated from current state)"
     )
 
     @field_validator('content')
