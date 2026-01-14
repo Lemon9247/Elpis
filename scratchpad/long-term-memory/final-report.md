@@ -116,6 +116,52 @@ if result["should_consolidate"]:
     )
 ```
 
+## Psyche Integration
+
+The consolidation is now integrated into Psyche:
+
+### New Files/Changes
+
+| File | Changes |
+|------|---------|
+| `src/psyche/mcp/client.py` | Added `MnemosyneClient` class and `ConsolidationResult` dataclass |
+| `src/psyche/memory/server.py` | Added consolidation config, `_maybe_consolidate_memories()` method, dual connection support |
+| `src/psyche/cli.py` | Added `mnemosyne_command` and `enable_consolidation` parameters |
+
+### How It Works
+
+1. Psyche creates both `ElpisClient` and `MnemosyneClient`
+2. On startup, connects to both servers
+3. After each idle thought, calls `_maybe_consolidate_memories()`
+4. If `consolidation_check_interval` (5 min) has passed:
+   - Calls `should_consolidate` on Mnemosyne
+   - If recommended, runs `consolidate_memories`
+   - Logs results and emits thought event
+
+### Configuration
+
+```python
+ServerConfig(
+    enable_consolidation=True,              # Enable/disable
+    consolidation_check_interval=300.0,     # Check every 5 minutes
+    consolidation_importance_threshold=0.6, # Min importance for promotion
+    consolidation_similarity_threshold=0.85 # Clustering threshold
+)
+```
+
+### CLI Usage
+
+```bash
+# Default (with consolidation)
+psyche
+
+# Disable consolidation
+psyche --no-consolidation
+
+# Custom mnemosyne command
+psyche --mnemosyne-command "mnemosyne-server --persist ./custom/path"
+```
+
 ## Future Extensions
 
 - LLM summarization of clusters (generate summary for consolidated memory)

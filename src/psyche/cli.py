@@ -23,7 +23,7 @@ _setup_logging_early()
 
 # Now safe to import modules that may use logging
 from psyche.client.app import PsycheApp
-from psyche.mcp.client import ElpisClient
+from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.memory.server import MemoryServer, ServerConfig
 
 
@@ -57,18 +57,22 @@ def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
 
 def main(
     server_command: str = "elpis-server",
+    mnemosyne_command: str | None = "mnemosyne-server",
     debug: bool = False,
     workspace: str = ".",
     log_file: str | None = None,
+    enable_consolidation: bool = True,
 ) -> None:
     """
     Main entry point for Psyche CLI.
 
     Args:
         server_command: Command to launch Elpis server
+        mnemosyne_command: Command to launch Mnemosyne server (None to disable)
         debug: Enable debug logging
         workspace: Working directory for tool operations
         log_file: Path to log file (default: ~/.psyche/psyche.log)
+        enable_consolidation: Enable automatic memory consolidation
     """
     # Default log file in user's home directory
     if log_file is None:
@@ -81,16 +85,27 @@ def main(
     # Create client for Elpis connection
     client = ElpisClient(server_command=server_command)
 
+    # Create client for Mnemosyne connection (optional)
+    mnemosyne_client = None
+    if mnemosyne_command and enable_consolidation:
+        mnemosyne_client = MnemosyneClient(server_command=mnemosyne_command)
+        logger.info(f"Mnemosyne client configured: {mnemosyne_command}")
+
     # Configure server
     server_config = ServerConfig(
         idle_think_interval=30.0,
         emotional_modulation=True,
         workspace_dir=workspace,
         allow_idle_tools=True,  # Enable sandboxed tool use during reflection
+        enable_consolidation=enable_consolidation,
     )
 
     # Create memory server
-    server = MemoryServer(elpis_client=client, config=server_config)
+    server = MemoryServer(
+        elpis_client=client,
+        config=server_config,
+        mnemosyne_client=mnemosyne_client,
+    )
 
     # Create and run Textual app
     app = PsycheApp(memory_server=server)

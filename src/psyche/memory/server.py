@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from loguru import logger
 
-from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult
+from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult, MnemosyneClient
 from psyche.memory.compaction import ContextCompactor, Message, create_message
 from psyche.tools.tool_engine import ToolEngine, ToolSettings
 
@@ -78,6 +78,12 @@ class ServerConfig:
     # Post-interaction delay before idle thinking resumes
     post_interaction_delay: float = 60.0  # Wait 60s after user interaction before idle thoughts
 
+    # Memory consolidation settings
+    enable_consolidation: bool = True  # Enable automatic memory consolidation
+    consolidation_check_interval: float = 300.0  # Check every 5 minutes
+    consolidation_importance_threshold: float = 0.6  # Min importance for promotion
+    consolidation_similarity_threshold: float = 0.85  # Similarity threshold for clustering
+
 
 class MemoryServer:
     """
@@ -95,10 +101,12 @@ class MemoryServer:
         self,
         elpis_client: ElpisClient,
         config: Optional[ServerConfig] = None,
+        mnemosyne_client: Optional[MnemosyneClient] = None,
         on_thought: Optional[Callable[[ThoughtEvent], None]] = None,
         on_response: Optional[Callable[[str], None]] = None,
         on_tool_call: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None,
         on_token: Optional[Callable[[str], None]] = None,
+        on_consolidation: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         """
         Initialize the memory server.
@@ -106,17 +114,21 @@ class MemoryServer:
         Args:
             elpis_client: Client for connecting to Elpis inference server
             config: Server configuration
+            mnemosyne_client: Optional client for Mnemosyne memory server (enables consolidation)
             on_thought: Callback for internal thoughts (for UI display)
             on_response: Callback for responses to user
             on_tool_call: Callback when a tool is executed (name, result or None for start)
             on_token: Callback for streaming tokens (for real-time display)
+            on_consolidation: Callback when memory consolidation runs
         """
         self.client = elpis_client
+        self.mnemosyne_client = mnemosyne_client
         self.config = config or ServerConfig()
         self.on_thought = on_thought
         self.on_response = on_response
         self.on_tool_call = on_tool_call
         self.on_token = on_token
+        self.on_consolidation = on_consolidation
 
         self._state = ServerState.IDLE
         self._compactor = ContextCompactor(
@@ -132,6 +144,7 @@ class MemoryServer:
         self._startup_time: float = time.time()
         self._last_idle_tool_use: float = 0.0  # Never used yet
         self._last_user_interaction: float = 0.0  # Track last user input time
+        self._last_consolidation_check: float = 0.0  # Track last consolidation check
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -211,11 +224,26 @@ Keep responses helpful and conversational."""
             async with self.client.connect():
                 logger.info("Connected to Elpis inference server")
 
-                # Add system prompt to context
-                self._compactor.add_message(create_message("system", self._system_prompt))
+                # Optionally connect to Mnemosyne for memory consolidation
+                if self.mnemosyne_client and self.config.enable_consolidation:
+                    async with self.mnemosyne_client.connect():
+                        logger.info("Connected to Mnemosyne memory server")
 
-                # Run the main loop
-                await self._inference_loop()
+                        # Add system prompt to context
+                        self._compactor.add_message(create_message("system", self._system_prompt))
+
+                        # Run the main loop with both connections
+                        await self._inference_loop()
+                else:
+                    # Run without mnemosyne
+                    if self.config.enable_consolidation and not self.mnemosyne_client:
+                        logger.warning("Consolidation enabled but no Mnemosyne client provided")
+
+                    # Add system prompt to context
+                    self._compactor.add_message(create_message("system", self._system_prompt))
+
+                    # Run the main loop
+                    await self._inference_loop()
         except Exception as e:
             logger.error(f"Server connection error: {e}")
             raise
@@ -728,10 +756,16 @@ Keep responses helpful and conversational."""
             if self.on_thought:
                 self.on_thought(thought)
 
+            # Check if memory consolidation is needed
+            await self._maybe_consolidate_memories()
+
             return
 
         # Max iterations reached
         logger.debug("Max idle tool iterations reached")
+
+        # Still check consolidation even if max iterations reached
+        await self._maybe_consolidate_memories()
 
     def _get_reflection_prompt(self) -> str:
         """Get a prompt for generating internal reflection."""
@@ -799,6 +833,69 @@ You MUST use the actual tools to see real data.
                 "quadrant": emotion.quadrant,
             },
         }
+
+    async def _maybe_consolidate_memories(self) -> None:
+        """
+        Check if memory consolidation is needed and run it if so.
+
+        This is called during idle periods to promote important short-term
+        memories to long-term storage.
+        """
+        # Skip if consolidation is disabled or no mnemosyne client
+        if not self.config.enable_consolidation or not self.mnemosyne_client:
+            return
+
+        # Check if enough time has passed since last consolidation check
+        import time
+        now = time.time()
+        time_since_last_check = now - self._last_consolidation_check
+        if time_since_last_check < self.config.consolidation_check_interval:
+            return
+
+        self._last_consolidation_check = now
+
+        try:
+            # Check if consolidation is recommended
+            should_consolidate, reason, short_term, long_term = await self.mnemosyne_client.should_consolidate()
+
+            if not should_consolidate:
+                logger.debug(f"Consolidation not needed: {reason}")
+                return
+
+            logger.info(f"Starting memory consolidation: {reason}")
+
+            # Run consolidation
+            result = await self.mnemosyne_client.consolidate_memories(
+                importance_threshold=self.config.consolidation_importance_threshold,
+                similarity_threshold=self.config.consolidation_similarity_threshold,
+            )
+
+            logger.info(
+                f"Consolidation complete: promoted {result.memories_promoted}, "
+                f"archived {result.memories_archived}, "
+                f"clusters formed: {result.clusters_formed}"
+            )
+
+            # Notify callback
+            if self.on_consolidation:
+                self.on_consolidation({
+                    "clusters_formed": result.clusters_formed,
+                    "memories_promoted": result.memories_promoted,
+                    "memories_archived": result.memories_archived,
+                    "memories_skipped": result.memories_skipped,
+                    "duration_seconds": result.duration_seconds,
+                })
+
+            # Emit a thought about consolidation
+            if self.on_thought and result.memories_promoted > 0:
+                self.on_thought(ThoughtEvent(
+                    content=f"[Memory consolidation: promoted {result.memories_promoted} memories to long-term storage]",
+                    thought_type="memory",
+                    triggered_by="consolidation",
+                ))
+
+        except Exception as e:
+            logger.error(f"Memory consolidation failed: {e}")
 
     def clear_context(self) -> None:
         """Clear conversation context."""
