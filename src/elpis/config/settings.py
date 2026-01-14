@@ -22,14 +22,15 @@ class ModelSettings(BaseSettings):
         default="./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf",
         description="Path to GGUF model file or HuggingFace model ID",
     )
+    # 4096 context + 20 GPU layers fits in 6GB VRAM (~3.9GB used)
     context_length: int = Field(
-        default=32768,
+        default=4096,
         ge=512,
         le=131072,
         description="Context window size in tokens",
     )
-    # 25 layers fits in 6GB VRAM with room for KV cache
-    gpu_layers: int = Field(default=25, ge=0, le=100)
+    # 20 layers fits in 6GB VRAM with 4096 context
+    gpu_layers: int = Field(default=20, ge=0, le=100)
     # Set to 1 to avoid SIGSEGV race condition in ggml CPU multi-threading
     # Even with GPU offloading, some ops run on CPU and the threading is buggy
     n_threads: int = Field(default=1, ge=1, le=64)
