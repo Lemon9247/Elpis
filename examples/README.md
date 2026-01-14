@@ -120,14 +120,11 @@ python examples/04_mcp_server_usage.py
 - Streaming generation
 - State management
 
-**Note:** This is a demonstration of the API. For actual MCP usage:
+**Note:** This is a demonstration of the API. For actual MCP usage, just run:
 ```bash
-# Terminal 1: Start the server
-elpis-server
-
-# Terminal 2: Connect with Psyche client
 psyche
 ```
+Psyche automatically spawns the Elpis and Mnemosyne servers as subprocesses.
 
 ---
 

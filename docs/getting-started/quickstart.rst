@@ -46,14 +46,15 @@ manages the servers automatically:
 
 Psyche will:
 
-1. Start the elpis-server as a subprocess
-2. Connect to it via MCP stdio transport
-3. Provide an interactive terminal interface
+1. Start elpis-server (inference) as a subprocess
+2. Start mnemosyne-server (memory) as a subprocess
+3. Connect to both via MCP stdio transport
+4. Provide an interactive terminal interface
 
 .. note::
 
-   When using Psyche, you do NOT need to start elpis-server manually.
-   Psyche spawns it automatically as needed.
+   When using Psyche, you do NOT need to start any servers manually.
+   Psyche spawns them automatically as needed.
 
 Basic Usage Flow
 ----------------
