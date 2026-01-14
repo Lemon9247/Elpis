@@ -20,10 +20,30 @@ Elpis (MCP Server)          Psyche (Client/Harness)
 
 ## Emotional Regulation System
 
-Elpis implements a valence-arousal emotional model that affects LLM inference parameters:
+Elpis implements a valence-arousal emotional model that modulates LLM generation:
 
-- **Valence** (pleasant/unpleasant): Affects `top_p` - higher valence = broader sampling
-- **Arousal** (high/low energy): Affects `temperature` - higher arousal = more focused responses
+- **Valence** (pleasant/unpleasant): -1.0 to +1.0
+- **Arousal** (high/low energy): -1.0 to +1.0
+
+### Emotional Modulation Approaches
+
+Elpis supports two methods of emotional modulation:
+
+1. **Sampling Parameters (Legacy)**
+   - Valence affects `top_p` - higher valence = broader sampling
+   - Arousal affects `temperature` - higher arousal = more focused responses
+
+2. **Steering Vectors (Experimental)**
+   - Uses activation steering to modulate model behavior
+   - Provides more nuanced emotional expression
+   - Maps valence-arousal to 4 emotion quadrants:
+     - **Excited** (high valence, high arousal)
+     - **Frustrated** (low valence, high arousal)
+     - **Calm** (high valence, low arousal)
+     - **Depleted** (low valence, low arousal)
+   - See [Training Emotion Vectors](#training-emotion-vectors) below
+
+### Homeostatic Regulation
 
 The system uses homeostatic regulation with decay toward baseline, responding to events like:
 - `success` - Positive valence, slight arousal increase
@@ -121,6 +141,50 @@ The Psyche client provides:
 - Memory management with context compaction
 - Tool execution (file ops, bash, search)
 - Continuous inference loop with idle thinking
+
+## Training Emotion Vectors
+
+To use steering vector-based emotional modulation, you need to train emotion vectors for your model:
+
+### Quick Start
+
+```bash
+# Train vectors for Llama 3.1 8B Instruct
+python scripts/train_emotion_vectors.py \
+  --model meta-llama/Llama-3.1-8B-Instruct \
+  --layer 15 \
+  --output ./data/emotion_vectors
+
+# This will create 4 vectors (excited, frustrated, calm, depleted)
+# Takes ~5-10 minutes on GPU, longer on CPU
+```
+
+### Configuration
+
+Update your Elpis configuration to use the trained vectors:
+
+```yaml
+emotion:
+  steering_strength: 1.0  # Global multiplier (0.0 to 3.0)
+  baseline_valence: 0.0   # Personality baseline
+  baseline_arousal: 0.0
+```
+
+### Tuning
+
+The quality of emotional expression depends on:
+
+- **Layer selection**: Try layers 12-20 for Llama 3.1 8B
+  - Earlier layers (12-15): More subtle effects
+  - Later layers (16-20): Stronger effects
+
+- **Steering strength**: Adjust global emotional expression
+  - 0.0: No emotional modulation
+  - 1.0: Normal expression (recommended)
+  - 2.0+: Exaggerated (may cause issues)
+
+- **Custom prompts**: Edit `EMOTION_PROMPTS` in the training script
+  for domain-specific emotional expression
 
 ## Development
 
