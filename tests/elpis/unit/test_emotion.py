@@ -112,6 +112,105 @@ class TestEmotionalState:
         assert "last_update" in d
         assert "update_count" in d
         assert "baseline" in d
+        assert "steering_coefficients" in d
+
+    def test_steering_coefficients_sum_to_one(self):
+        """Steering coefficients should sum to approximately 1.0."""
+        state = EmotionalState(valence=0.5, arousal=-0.3)
+        coeffs = state.get_steering_coefficients()
+
+        total = sum(coeffs.values())
+        assert 0.99 <= total <= 1.01, f"Coefficients sum to {total}, expected ~1.0"
+
+    def test_steering_coefficients_excited_quadrant(self):
+        """High valence + high arousal should produce mostly 'excited' coefficient."""
+        state = EmotionalState(valence=0.9, arousal=0.9)
+        coeffs = state.get_steering_coefficients()
+
+        assert coeffs["excited"] > 0.7
+        assert coeffs["excited"] > coeffs["frustrated"]
+        assert coeffs["excited"] > coeffs["calm"]
+        assert coeffs["excited"] > coeffs["depleted"]
+
+    def test_steering_coefficients_frustrated_quadrant(self):
+        """Low valence + high arousal should produce mostly 'frustrated' coefficient."""
+        state = EmotionalState(valence=-0.9, arousal=0.9)
+        coeffs = state.get_steering_coefficients()
+
+        assert coeffs["frustrated"] > 0.7
+        assert coeffs["frustrated"] > coeffs["excited"]
+        assert coeffs["frustrated"] > coeffs["calm"]
+        assert coeffs["frustrated"] > coeffs["depleted"]
+
+    def test_steering_coefficients_calm_quadrant(self):
+        """High valence + low arousal should produce mostly 'calm' coefficient."""
+        state = EmotionalState(valence=0.9, arousal=-0.9)
+        coeffs = state.get_steering_coefficients()
+
+        assert coeffs["calm"] > 0.7
+        assert coeffs["calm"] > coeffs["excited"]
+        assert coeffs["calm"] > coeffs["frustrated"]
+        assert coeffs["calm"] > coeffs["depleted"]
+
+    def test_steering_coefficients_depleted_quadrant(self):
+        """Low valence + low arousal should produce mostly 'depleted' coefficient."""
+        state = EmotionalState(valence=-0.9, arousal=-0.9)
+        coeffs = state.get_steering_coefficients()
+
+        assert coeffs["depleted"] > 0.7
+        assert coeffs["depleted"] > coeffs["excited"]
+        assert coeffs["depleted"] > coeffs["frustrated"]
+        assert coeffs["depleted"] > coeffs["calm"]
+
+    def test_steering_coefficients_neutral_balanced(self):
+        """Neutral state should have roughly equal coefficients."""
+        state = EmotionalState(valence=0.0, arousal=0.0)
+        coeffs = state.get_steering_coefficients()
+
+        # All should be 0.25 at perfect center
+        for emotion, coeff in coeffs.items():
+            assert 0.2 <= coeff <= 0.3, f"{emotion} = {coeff}, expected ~0.25"
+
+    def test_steering_strength_scaling(self):
+        """Steering strength should scale all coefficients."""
+        state = EmotionalState(valence=0.5, arousal=0.5, steering_strength=0.5)
+        coeffs = state.get_steering_coefficients()
+
+        # With strength 0.5, total should be ~0.5
+        total = sum(coeffs.values())
+        assert 0.45 <= total <= 0.55, f"Total {total}, expected ~0.5 with strength 0.5"
+
+    def test_steering_strength_zero(self):
+        """Steering strength of 0 should produce zero coefficients."""
+        state = EmotionalState(valence=0.8, arousal=0.8, steering_strength=0.0)
+        coeffs = state.get_steering_coefficients()
+
+        for emotion, coeff in coeffs.items():
+            assert coeff == 0.0, f"{emotion} should be 0.0 with strength 0.0"
+
+    def test_steering_strength_exaggerated(self):
+        """Steering strength > 1.0 should amplify coefficients."""
+        state = EmotionalState(valence=0.5, arousal=0.5, steering_strength=2.0)
+        coeffs = state.get_steering_coefficients()
+
+        # With strength 2.0, total should be ~2.0
+        total = sum(coeffs.values())
+        assert 1.9 <= total <= 2.1, f"Total {total}, expected ~2.0 with strength 2.0"
+
+    def test_get_dominant_emotion(self):
+        """get_dominant_emotion should return highest coefficient."""
+        state = EmotionalState(valence=0.8, arousal=0.8)
+        emotion, strength = state.get_dominant_emotion()
+
+        assert emotion == "excited"
+        assert strength > 0.5
+
+        # Test another quadrant
+        state = EmotionalState(valence=-0.8, arousal=-0.8)
+        emotion, strength = state.get_dominant_emotion()
+
+        assert emotion == "depleted"
+        assert strength > 0.5
 
 
 class TestHomeostasisRegulator:
