@@ -3,8 +3,11 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-GPLv3-orange)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://lemon9247.github.io/Elpis/)
 
 Do robots dream of electric sheep?
+
+**[Documentation](https://lemon9247.github.io/Elpis/)** | **[Quick Start](QUICKSTART.md)**
 
 ## What is Elpis?
 
