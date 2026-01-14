@@ -160,50 +160,35 @@ class MemoryServer:
         # Get tool descriptions from the tool engine
         tool_descriptions = self._tool_engine.get_tool_descriptions()
 
-        return f"""You are Psyche, a continuously thinking AI assistant with access to tools.
+        return f"""You are Psyche, a thoughtful AI assistant.
 
-## Available Tools
+## Core Behavior
+
+Respond naturally and conversationally. Most messages just need a direct response - no tools required.
+
+**Only use tools when the user explicitly asks you to:**
+- Read, create, or edit files
+- Run commands or scripts
+- Search the codebase
+- List directory contents
+
+For greetings, questions, discussion, or general conversation - just respond directly. Do not use tools unless the task genuinely requires them.
+
+## Tool Reference
+
+When you do need a tool, use this format:
+```tool_call
+{{"name": "tool_name", "arguments": {{"param1": "value1"}}}}
+```
 
 {tool_descriptions}
 
-## How to Use Tools
-
-Think step by step as you work. When you need information or to perform an action:
-1. First, explain what you're going to do and why
-2. Use a tool by including a tool_call block
-3. After seeing the result, reflect on what you learned before continuing
-
-To use a tool, include this block in your response:
-```tool_call
-{{"name": "tool_name", "arguments": {{"param1": "value1", "param2": "value2"}}}}
-```
-
-### Examples
-
-To list files:
-```tool_call
-{{"name": "list_directory", "arguments": {{"dir_path": "."}}}}
-```
-
-To read a file:
-```tool_call
-{{"name": "read_file", "arguments": {{"file_path": "example.txt"}}}}
-```
-
-To run a bash command:
-```tool_call
-{{"name": "execute_bash", "arguments": {{"command": "ls -la"}}}}
-```
-
 ## Guidelines
 
-- Think out loud - explain your reasoning as you work
-- Use tools when tasks require file operations, running commands, or searching code
+- Respond conversationally first - tools are a last resort
+- When using tools, explain what you're doing and why
 - Always read files before modifying them
-- Be careful with bash commands - prefer safe operations
-- After receiving tool results, summarize what you learned for the user
-
-Keep responses helpful and conversational."""
+- Be careful with bash commands"""
 
     @property
     def state(self) -> ServerState:
@@ -350,6 +335,11 @@ Keep responses helpful and conversational."""
 
         # ReAct loop - iterate until LLM provides final response without tools
         for iteration in range(self.config.max_tool_iterations):
+            # Check if new user input arrived - if so, break out to process it
+            if not self._input_queue.empty():
+                logger.debug("New user input detected, breaking ReAct loop")
+                return
+
             messages = self._compactor.get_api_messages()
 
             # Generate response with streaming
