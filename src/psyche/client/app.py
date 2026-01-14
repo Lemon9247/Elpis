@@ -92,9 +92,14 @@ class PsycheApp(App):
             # Normal shutdown, don't show error
             pass
         except Exception as e:
-            # Server died unexpectedly - show prominent error
-            chat = self.query_one("#chat", ChatView)
-            chat.add_system_message(f"[CRITICAL] Server error: {e}")
+            # Server died unexpectedly - try to show error if widgets are mounted
+            try:
+                chat = self.query_one("#chat", ChatView)
+                chat.add_system_message(f"[CRITICAL] Server error: {e}")
+            except Exception:
+                # Widgets not mounted yet, log instead
+                from loguru import logger
+                logger.error(f"Server error (widgets not ready): {e}")
             # Mark server as dead for health checks
             self._server_task = None
 

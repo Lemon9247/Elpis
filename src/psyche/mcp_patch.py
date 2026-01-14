@@ -7,10 +7,26 @@ in mcp/shared/session.py _receive_loop method.
 The MCP library iterates over _response_streams.items() without copying,
 causing a race condition when the dictionary is modified during iteration.
 
-This patch replaces the buggy iteration with a safe copy.
+This patch uses a SafeDict that returns a copy from items().
 """
 
 import logging
+
+
+class SafeIterDict(dict):
+    """A dict subclass that returns a copy from items() to prevent iteration errors."""
+
+    def items(self):
+        """Return a copy of items to prevent 'dictionary changed during iteration'."""
+        return list(super().items())
+
+    def keys(self):
+        """Return a copy of keys to prevent 'dictionary changed during iteration'."""
+        return list(super().keys())
+
+    def values(self):
+        """Return a copy of values to prevent 'dictionary changed during iteration'."""
+        return list(super().values())
 
 
 def apply_mcp_patch():
@@ -18,39 +34,17 @@ def apply_mcp_patch():
     try:
         from mcp.shared import session
 
-        # Store original method
-        original_receive_loop = session.BaseSession._receive_loop
+        # Patch the BaseSession.__init__ to use SafeIterDict for _response_streams
+        original_init = session.BaseSession.__init__
 
-        async def patched_receive_loop(self):
-            """Patched _receive_loop that safely iterates over response streams."""
-            from anyio import ClosedResourceError, EndOfStream
-            from mcp.shared.exceptions import McpError
-            from mcp.shared.session import CONNECTION_CLOSED
-            from mcp.types import ErrorData, JSONRPCError
+        def patched_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            # Replace the _response_streams dict with our safe version
+            # Copy any existing items (there shouldn't be any at init)
+            existing = dict(self._response_streams) if hasattr(self, '_response_streams') else {}
+            self._response_streams = SafeIterDict(existing)
 
-            try:
-                async for message in self._read_stream:
-                    # This part is the same as the original
-                    await self._handle_incoming(message)
-            except ClosedResourceError:
-                logging.debug("Read stream closed by client")
-            except EndOfStream:
-                logging.debug("Read stream closed by client")
-            except Exception as e:
-                logging.exception(f"Unhandled exception in receive loop: {e}")
-            finally:
-                # FIX: Iterate over a copy to prevent "dictionary keys changed during iteration"
-                for id, stream in list(self._response_streams.items()):
-                    error = ErrorData(code=CONNECTION_CLOSED, message="Connection closed")
-                    try:
-                        await stream.send(JSONRPCError(jsonrpc="2.0", id=id, error=error))
-                        await stream.aclose()
-                    except Exception:
-                        pass
-                self._response_streams.clear()
-
-        # Apply the patch
-        session.BaseSession._receive_loop = patched_receive_loop
+        session.BaseSession.__init__ = patched_init
         logging.debug("Applied MCP library patch for _response_streams iteration bug")
 
     except Exception as e:
