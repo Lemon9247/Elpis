@@ -13,6 +13,7 @@ System Overview
 
                     +------------------+
                     |   MCP Client     |
+                    |     (Psyche)     |
                     +--------+---------+
                              |
                              | stdio (JSON-RPC)
@@ -22,26 +23,30 @@ System Overview
                     |  (server.py)     |
                     +--------+---------+
                              |
-                             v
-                    +------------------+
-                    | ChromaMemoryStore|
-                    +--------+---------+
-                             |
             +----------------+----------------+
             |                                 |
             v                                 v
-    +---------------+                 +---------------+
-    | Short-term    |                 | Long-term     |
-    | Collection    |                 | Collection    |
-    +---------------+                 +---------------+
-            |                                 |
-            +----------------+----------------+
-                             |
-                             v
-                    +------------------+
-                    |    ChromaDB      |
-                    | (Vector Storage) |
-                    +------------------+
+    +------------------+              +------------------+
+    | ChromaMemoryStore|              | MemoryConsolidator|
+    +--------+---------+              +--------+---------+
+             |                                 |
+             +----------------+----------------+
+                              |
+             +----------------+----------------+
+             |                                 |
+             v                                 v
+     +---------------+                 +---------------+
+     | Short-term    |  --promote-->   | Long-term     |
+     | Collection    |                 | Collection    |
+     +---------------+                 +---------------+
+             |                                 |
+             +----------------+----------------+
+                              |
+                              v
+                     +------------------+
+                     |    ChromaDB      |
+                     | (Vector Storage) |
+                     +------------------+
 
 Storage Design
 --------------
@@ -178,6 +183,69 @@ Retrieval Flow
    5. Sort by importance score
    6. Return top N results
 
+Memory Consolidation
+--------------------
+
+The ``MemoryConsolidator`` class implements clustering-based memory consolidation,
+promoting important short-term memories to long-term storage.
+
+Consolidation Algorithm
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: text
+
+   1. MCP tool call: consolidate_memories
+   2. Get candidates: short-term memories older than min_age_hours
+   3. Recompute importance scores for all candidates
+   4. Cluster memories using cosine similarity on embeddings
+   5. For each cluster with avg_importance >= threshold:
+      a. Select highest-importance memory as representative
+      b. Store source_memory_ids for lineage tracking
+      c. Promote representative to long-term collection
+      d. Delete other cluster members
+   6. Return consolidation report
+
+Clustering Process
+^^^^^^^^^^^^^^^^^^
+
+The greedy clustering algorithm groups semantically similar memories:
+
+1. **Get embeddings**: Retrieve stored embeddings from ChromaDB (no re-embedding needed)
+2. **Initialize**: Start with the first unassigned memory as a cluster seed
+3. **Expand cluster**: Add memories with cosine similarity >= threshold (default 0.85)
+4. **Update centroid**: Compute running average of cluster embeddings
+5. **Repeat**: Process remaining unassigned memories
+
+.. code-block:: python
+
+   def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+       """Compute cosine similarity between two vectors."""
+       norm_a = np.linalg.norm(a)
+       norm_b = np.linalg.norm(b)
+       if norm_a == 0 or norm_b == 0:
+           return 0.0
+       return float(np.dot(a, b) / (norm_a * norm_b))
+
+Promotion Flow
+^^^^^^^^^^^^^^
+
+.. code-block:: text
+
+   1. Get memory from short_term collection (with embedding)
+   2. Update status to LONG_TERM
+   3. Add to long_term collection with same embedding
+   4. Delete from short_term collection
+
+Consolidation Trigger
+^^^^^^^^^^^^^^^^^^^^^
+
+Consolidation can be triggered in two ways:
+
+**Manual**: Call ``consolidate_memories`` tool directly
+
+**Automatic**: Psyche calls ``should_consolidate`` during idle periods and runs
+consolidation when the short-term buffer exceeds the threshold (default: 100 memories)
+
 Persistence
 -----------
 
@@ -211,6 +279,7 @@ ChromaDB stores data in SQLite and binary files:
 See Also
 --------
 
+- :doc:`consolidation` - Detailed consolidation documentation
 - :doc:`memory-types` - Understanding memory types and lifecycle
 - :doc:`api/storage` - ChromaMemoryStore API reference
 - :doc:`api/models` - Memory data structures

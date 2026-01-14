@@ -190,6 +190,78 @@ Color coding indicates the current quadrant:
 - **Frustrated**: Red
 - **Depleted**: Dim/gray
 
+Memory Consolidation
+--------------------
+
+Psyche integrates with Mnemosyne for automatic memory consolidation during idle periods.
+
+How It Works
+^^^^^^^^^^^^
+
+1. **Dual Connection**: Psyche connects to both Elpis (inference) and Mnemosyne (memory)
+2. **Periodic Check**: After each idle thought, checks if consolidation is recommended
+3. **Automatic Trigger**: If short-term buffer exceeds threshold, runs consolidation
+4. **Background Processing**: Consolidation runs without interrupting the UI
+
+Configuration
+^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    ServerConfig(
+        enable_consolidation=True,              # Enable/disable consolidation
+        consolidation_check_interval=300.0,     # Check every 5 minutes
+        consolidation_importance_threshold=0.6, # Min importance for promotion
+        consolidation_similarity_threshold=0.85 # Clustering threshold
+    )
+
+CLI Options
+^^^^^^^^^^^
+
+.. code-block:: bash
+
+    # Default (with consolidation enabled)
+    psyche
+
+    # Disable consolidation
+    psyche --no-consolidation
+
+    # Custom Mnemosyne command
+    psyche --mnemosyne-command "mnemosyne-server --persist-dir ./my-memories"
+
+MnemosyneClient
+^^^^^^^^^^^^^^^
+
+The ``MnemosyneClient`` class provides the interface to Mnemosyne:
+
+.. code-block:: python
+
+    from psyche.mcp.client import MnemosyneClient
+
+    client = MnemosyneClient(server_command="mnemosyne-server")
+
+    async with client.connect():
+        # Check if consolidation is recommended
+        should, reason, st_count, lt_count = await client.should_consolidate()
+
+        if should:
+            # Run consolidation
+            result = await client.consolidate_memories(
+                importance_threshold=0.6,
+                similarity_threshold=0.85
+            )
+            print(f"Promoted {result.memories_promoted} memories")
+
+        # Store a memory
+        await client.store_memory(
+            content="User prefers dark mode",
+            summary="UI preference",
+            memory_type="semantic"
+        )
+
+        # Search memories
+        results = await client.search_memories("user preferences", n_results=5)
+
 Context Management
 ------------------
 

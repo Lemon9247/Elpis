@@ -14,6 +14,15 @@ Key Features
     and relationship tracking. Memories are embedded using sentence transformers for
     powerful semantic search capabilities.
 
+**Long-term Memory Consolidation**
+    Biologically-inspired memory consolidation promotes important short-term memories
+    to long-term storage. Features include:
+
+    - Clustering-based consolidation using cosine similarity on embeddings
+    - Importance-threshold promotion (configurable, default 0.6)
+    - Automatic archival of redundant cluster members
+    - Lineage tracking via ``source_memory_ids`` field
+
 **ChromaDB Vector Backend**
     Uses ChromaDB for efficient vector storage and retrieval. Memories are automatically
     embedded using the ``all-MiniLM-L6-v2`` model from SentenceTransformers.
@@ -46,11 +55,21 @@ Start the Mnemosyne server:
 
    mnemosyne-server --persist-dir ./data/memory
 
-The server exposes three MCP tools:
+The server exposes eight MCP tools:
+
+**Memory Storage**
 
 - ``store_memory``: Store a new memory with optional emotional context
 - ``search_memories``: Semantic search across all memories
 - ``get_memory_stats``: Get memory statistics (counts by status)
+- ``delete_memory``: Delete a memory by ID
+- ``get_recent_memories``: Get memories from the last N hours
+
+**Consolidation**
+
+- ``consolidate_memories``: Run clustering-based memory consolidation
+- ``should_consolidate``: Check if consolidation is recommended
+- ``get_memory_context``: Get relevant memories for context injection
 
 Example: Storing a Memory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -81,6 +100,22 @@ Example: Searching Memories
        "n_results": 5
    }
 
+Example: Memory Consolidation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   # Check if consolidation is recommended
+   result = await mnemosyne.call_tool("should_consolidate", {})
+   # Returns: {"should_consolidate": true, "reason": "Buffer size (150) exceeds threshold", ...}
+
+   # Run consolidation
+   report = await mnemosyne.call_tool("consolidate_memories", {
+       "importance_threshold": 0.6,
+       "similarity_threshold": 0.85
+   })
+   # Returns: {"clusters_formed": 5, "memories_promoted": 3, "memories_archived": 12, ...}
+
 Documentation
 -------------
 
@@ -89,6 +124,7 @@ Documentation
    :caption: Contents:
 
    architecture
+   consolidation
    memory-types
    api/index
 

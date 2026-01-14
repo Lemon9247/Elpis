@@ -6,17 +6,30 @@ Do robots dream of electric sheep?
 
 Elpis is an MCP (Model Context Protocol) inference server with emotional regulation. It provides a local LLM inference backend that modulates generation parameters based on a valence-arousal emotional model, enabling emotionally-aware AI responses.
 
-Elpis is designed to work with **Psyche** (located in the `psyche/` subdirectory), which provides the user interface, memory management, and tool execution capabilities.
+The Elpis system consists of three components:
+- **Elpis** - Inference server with emotional modulation
+- **Mnemosyne** - Semantic memory server with long-term consolidation
+- **Psyche** - TUI client that orchestrates inference, memory, and tool execution
 
 ## Architecture
 
 ```
-Elpis (MCP Server)          Psyche (Client/Harness)
- - LLM inference             - Memory server
- - Emotional regulation      - Context compaction
- - Parameter modulation      - Tool execution
-                             - User REPL interface
+Elpis (Inference)          Mnemosyne (Memory)         Psyche (Client)
+ - LLM inference            - Semantic storage          - TUI interface
+ - Emotional regulation     - Short/long-term memory    - Tool execution
+ - Parameter modulation     - Memory consolidation      - Context compaction
+ - Steering vectors         - Clustering algorithm      - Idle thinking
+                                    |                          |
+                                    +----------- MCP -----------+
 ```
+
+### Memory Consolidation
+
+Mnemosyne implements biologically-inspired memory consolidation:
+- **Short-term memory**: Recent memories awaiting consolidation
+- **Long-term memory**: Important memories promoted after clustering
+- **Clustering**: Groups semantically similar memories using cosine similarity
+- **Automatic consolidation**: Psyche triggers consolidation during idle periods
 
 ## Emotional Regulation System
 
@@ -70,6 +83,21 @@ Elpis exposes these MCP tools:
 |--------------|-------------|
 | `emotion://state` | Current valence-arousal state |
 | `emotion://events` | Available emotional event types |
+
+## Mnemosyne MCP Tools
+
+Mnemosyne exposes these MCP tools:
+
+| Tool | Description |
+|------|-------------|
+| `store_memory` | Store a new memory with emotional context |
+| `search_memories` | Semantic search across all memories |
+| `get_memory_stats` | Get memory counts by status |
+| `consolidate_memories` | Run clustering-based memory consolidation |
+| `should_consolidate` | Check if consolidation is recommended |
+| `get_memory_context` | Get relevant memories for context injection |
+| `delete_memory` | Delete a memory by ID |
+| `get_recent_memories` | Get memories from the last N hours |
 
 ## Installation
 
@@ -258,25 +286,31 @@ mypy src/elpis
 ## Project Structure
 
 ```
-src/elpis/
- - config/       # Settings management
- - emotion/      # Valence-arousal state and regulation
- - llm/          # LLM inference with llama.cpp
- - mcp/          # MCP protocol components
- - server.py     # MCP server entry point
- - utils/        # Hardware detection, logging
+src/
+  elpis/           # Inference MCP server
+   - config/        # Settings management
+   - emotion/       # Valence-arousal state and regulation
+   - llm/           # Inference backends (llama-cpp, transformers)
+   - server.py      # MCP server entry point
 
-psyche/          # Client harness (separate package)
- - memory/       # Context compaction, continuous inference
- - client/       # REPL and display
- - tools/        # Tool definitions and implementations
- - mcp/          # MCP client for Elpis connection
+  mnemosyne/       # Memory MCP server
+   - core/          # Memory models and consolidator
+   - storage/       # ChromaDB storage backend
+   - server.py      # MCP server entry point
+
+  psyche/          # TUI client
+   - client/        # Textual TUI components
+   - memory/        # Inference server with consolidation
+   - tools/         # Tool definitions and implementations
+   - mcp/           # MCP clients for Elpis and Mnemosyne
 ```
 
 ## Test Results
 
-- **Elpis**: 81 tests, 91% coverage
-- **Psyche**: 163 tests, 69% coverage
+- **Elpis**: 81 tests
+- **Mnemosyne**: 87 tests
+- **Psyche**: 163 tests
+- **Total**: 331 tests
 
 ## Roadmap
 
@@ -285,7 +319,7 @@ psyche/          # Client harness (separate package)
 - [x] Phase 2B: MCP inference server
 - [x] Phase 2C: Emotional regulation system
 - [x] Phase 2D: Psyche harness with memory server
-- [ ] Phase 3: Long-term memory (ChromaDB integration)
+- [x] Phase 3: Long-term memory consolidation with clustering
 - [ ] Phase 4: Advanced emotional dynamics
 
 ## Author and License

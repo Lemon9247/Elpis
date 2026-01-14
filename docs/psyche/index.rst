@@ -10,8 +10,9 @@ continuous inference capabilities.
 Overview
 --------
 
-Psyche serves as the user-facing client in the Elpis ecosystem, connecting to the
-Elpis inference server via MCP (Model Context Protocol) and providing:
+Psyche serves as the user-facing client in the Elpis ecosystem, connecting to both
+the Elpis inference server and Mnemosyne memory server via MCP (Model Context Protocol)
+and providing:
 
 - **Interactive TUI**: A rich terminal interface built with Textual, featuring
   chat history, emotional state visualization, tool activity display, and
@@ -23,6 +24,9 @@ Elpis inference server via MCP (Model Context Protocol) and providing:
 - **Continuous Inference**: Unlike traditional chatbots, Psyche maintains an
   always-active thought process that generates idle reflections when not
   processing user input.
+
+- **Memory Consolidation**: Automatic memory consolidation during idle periods,
+  promoting important short-term memories to long-term storage via Mnemosyne.
 
 - **Tool Integration**: A comprehensive tool system for file operations, bash
   command execution, and codebase searching with safety controls.
@@ -39,16 +43,18 @@ Psyche is organized into several key components:
 **Memory Server** (``psyche.memory``)
     The continuous inference server that manages conversation context, processes
     user input, generates responses, and handles idle thinking. Includes context
-    compaction for managing token limits.
+    compaction for managing token limits and automatic memory consolidation.
 
 **Tool Engine** (``psyche.tools``)
     Async tool execution orchestrator with validated tool definitions and
     implementations for file operations, bash execution, directory listing,
     and codebase searching.
 
-**MCP Client** (``psyche.mcp``)
-    Client for connecting to the Elpis inference server, handling text generation
-    with streaming, emotional state management, and function calls.
+**MCP Clients** (``psyche.mcp``)
+    Clients for connecting to backend servers:
+
+    - ``ElpisClient``: Text generation with streaming and emotional modulation
+    - ``MnemosyneClient``: Memory storage, search, and consolidation
 
 Key Features
 ------------
@@ -65,6 +71,11 @@ Continuous Inference
     Background idle thinking generates reflections and explorations during quiet
     periods, with optional read-only tool access for workspace exploration.
 
+Memory Consolidation
+    Automatic memory consolidation during idle periods. Psyche connects to Mnemosyne
+    and periodically checks if consolidation is recommended, then triggers clustering-
+    based promotion of important memories to long-term storage.
+
 Context Management
     Automatic context compaction keeps conversations within token limits using
     sliding window or summarization strategies.
@@ -80,7 +91,7 @@ Launch Psyche from the command line:
 
 .. code-block:: bash
 
-    # Start the TUI client
+    # Start the TUI client (with memory consolidation)
     psyche
 
     # With debug logging
@@ -88,6 +99,12 @@ Launch Psyche from the command line:
 
     # Specify workspace directory
     psyche --workspace /path/to/project
+
+    # Disable memory consolidation
+    psyche --no-consolidation
+
+    # Custom Mnemosyne server command
+    psyche --mnemosyne-command "mnemosyne-server --persist-dir ./custom/memory"
 
 Within the TUI, type messages and press Enter to interact. Use slash commands
 for control:
