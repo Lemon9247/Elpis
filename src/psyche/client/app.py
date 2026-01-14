@@ -100,33 +100,53 @@ class PsycheApp(App):
 
     def _on_token(self, token: str) -> None:
         """Handle streaming token callback."""
-        chat = self.query_one("#chat", ChatView)
-        if not chat.is_streaming:
-            chat.start_stream()
-        chat.append_token(token)
+        # Use call_later to safely schedule widget update on Textual's event loop
+        def update():
+            try:
+                chat = self.query_one("#chat", ChatView)
+                if not chat.is_streaming:
+                    chat.start_stream()
+                chat.append_token(token)
+            except Exception:
+                pass  # Widget may not exist during shutdown
+        self.call_later(update)
 
     def _on_thought(self, thought: ThoughtEvent) -> None:
         """Handle internal thought callback."""
-        thoughts = self.query_one("#thoughts", ThoughtPanel)
-        thoughts.add_thought(thought.content, thought.thought_type)
+        # Use call_later to safely schedule widget update on Textual's event loop
+        def update():
+            try:
+                thoughts = self.query_one("#thoughts", ThoughtPanel)
+                thoughts.add_thought(thought.content, thought.thought_type)
+            except Exception:
+                pass  # Widget may not exist during shutdown
+        self.call_later(update)
 
     def _on_response(self, content: str) -> None:
         """Handle response completion callback."""
-        chat = self.query_one("#chat", ChatView)
-        if chat.is_streaming:
-            chat.end_stream()
-        # Response already displayed via streaming, this just signals completion
+        # Use call_later to safely schedule widget update on Textual's event loop
+        def update():
+            try:
+                chat = self.query_one("#chat", ChatView)
+                if chat.is_streaming:
+                    chat.end_stream()
+            except Exception:
+                pass  # Widget may not exist during shutdown
+        self.call_later(update)
 
     def _on_tool_call(self, name: str, result: Optional[Dict[str, Any]]) -> None:
         """Handle tool execution callback."""
-        tool_widget = self.query_one("#tool-activity", ToolActivity)
-
-        if result is None:
-            # Tool starting
-            tool_widget.add_tool_start(name)
-        else:
-            # Tool complete
-            tool_widget.update_tool_complete(name, result)
+        # Use call_later to safely schedule widget update on Textual's event loop
+        def update():
+            try:
+                tool_widget = self.query_one("#tool-activity", ToolActivity)
+                if result is None:
+                    tool_widget.add_tool_start(name)
+                else:
+                    tool_widget.update_tool_complete(name, result)
+            except Exception:
+                pass  # Widget may not exist during shutdown
+        self.call_later(update)
 
     async def _update_emotional_display(self) -> None:
         """Periodically update emotional state display."""
