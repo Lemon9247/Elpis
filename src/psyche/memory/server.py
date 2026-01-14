@@ -318,11 +318,30 @@ When you need a tool, use this format and then STOP:
                     # Run the main loop
                     await self._inference_loop()
         except ExceptionGroup as eg:
-            # Unwrap ExceptionGroup to get the actual error(s)
-            for exc in eg.exceptions:
+            # Recursively unwrap ExceptionGroup to get the actual error(s)
+            def unwrap_exception_group(exc_group, depth=0):
+                """Recursively extract all leaf exceptions from nested ExceptionGroups."""
+                errors = []
+                for exc in exc_group.exceptions:
+                    if isinstance(exc, ExceptionGroup):
+                        errors.extend(unwrap_exception_group(exc, depth + 1))
+                    else:
+                        errors.append(exc)
+                return errors
+
+            leaf_errors = unwrap_exception_group(eg)
+            for exc in leaf_errors:
                 logger.error(f"Server subprocess error: {type(exc).__name__}: {exc}")
-            # Re-raise with clearer message
-            raise RuntimeError(f"Server subprocess failed: {eg.exceptions[0]}") from eg
+                # Log full traceback for debugging
+                import traceback
+                logger.error("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+
+            # Re-raise with the actual error message
+            if leaf_errors:
+                actual_error = leaf_errors[0]
+                raise RuntimeError(f"Server subprocess failed: {type(actual_error).__name__}: {actual_error}") from actual_error
+            else:
+                raise RuntimeError(f"Server subprocess failed: {eg}") from eg
         except Exception as e:
             logger.error(f"Server connection error: {e}")
             raise
