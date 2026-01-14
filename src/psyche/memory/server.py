@@ -314,6 +314,12 @@ When you need a tool, use this format and then STOP:
 
                     # Run the main loop
                     await self._inference_loop()
+        except ExceptionGroup as eg:
+            # Unwrap ExceptionGroup to get the actual error(s)
+            for exc in eg.exceptions:
+                logger.error(f"Server subprocess error: {type(exc).__name__}: {exc}")
+            # Re-raise with clearer message
+            raise RuntimeError(f"Server subprocess failed: {eg.exceptions[0]}") from eg
         except Exception as e:
             logger.error(f"Server connection error: {e}")
             raise
