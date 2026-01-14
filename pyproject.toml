@@ -22,11 +22,15 @@ classifiers = [
 ]
 
 dependencies = [
-    # Core dependencies (from elpis-inference and mnemosyne)
+    # Core dependencies
     "pydantic>=2.0",                # Data validation
     "pydantic-settings>=2.0",       # Configuration
     "loguru>=0.7.0",                # Logging
     "mcp>=1.0.0",                   # MCP server framework
+    # Inference backends
+    "llama-cpp-python>=0.2.0",      # Default backend
+    "torch>=2.0.0",                 # Transformers backend (experimental)
+    "transformers>=4.30.0",         # Transformers backend (experimental)
     # Memory server dependencies (mnemosyne)
     "chromadb>=0.4.0",              # Vector database
     "sentence-transformers>=2.2.0", # Embedding generation
@@ -47,30 +51,6 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.5",
     "pre-commit>=3.4",
-]
-
-# Inference backends
-llama-cpp = [
-    "llama-cpp-python>=0.2.0",
-]
-
-transformers = [
-    "torch>=2.0.0",
-    "transformers>=4.30.0",
-]
-
-cuda = [
-    # Install with: CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python
-]
-
-rocm = [
-    # Install with: CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install llama-cpp-python
-]
-
-all = [
-    "llama-cpp-python>=0.2.0",
-    "torch>=2.0.0",
-    "transformers>=4.30.0",
 ]
 
 [project.scripts]
