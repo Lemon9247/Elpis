@@ -15,8 +15,9 @@ context_length = 32768
 gpu_layers = 35
 
 # CPU threads to use for inference
-# Lower values are more stable on CPU-only systems (8 can cause SIGSEGV in ggml)
-n_threads = 4
+# Set to 1 to avoid SIGSEGV race condition in ggml multi-threading
+# Even with GPU offloading, some ops run on CPU and the threading is buggy
+n_threads = 1
 
 # Temperature for sampling (higher = more creative)
 temperature = 0.7

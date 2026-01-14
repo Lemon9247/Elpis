@@ -29,8 +29,9 @@ class ModelSettings(BaseSettings):
         description="Context window size in tokens",
     )
     gpu_layers: int = Field(default=35, ge=0, le=100)
-    # Reduced from 8 to 4 - higher thread counts can cause SIGSEGV in ggml on CPU
-    n_threads: int = Field(default=4, ge=1, le=64)
+    # Set to 1 to avoid SIGSEGV race condition in ggml CPU multi-threading
+    # Even with GPU offloading, some ops run on CPU and the threading is buggy
+    n_threads: int = Field(default=1, ge=1, le=64)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4096, ge=1, le=32768)
