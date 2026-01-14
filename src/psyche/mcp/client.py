@@ -105,21 +105,31 @@ class ElpisClient:
             env=env,
         )
 
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                self._session = session
-                self._connected = True
+        logger.debug(f"Connecting to Elpis server: {self.server_command} {self.server_args}")
 
-                # Initialize the session
-                await session.initialize()
-                logger.info("Connected to Elpis inference server")
+        try:
+            async with stdio_client(server_params) as (read, write):
+                logger.debug("stdio_client connected, creating session...")
+                async with ClientSession(read, write) as session:
+                    logger.debug("ClientSession created, initializing...")
+                    self._session = session
+                    self._connected = True
 
-                try:
-                    yield self
-                finally:
-                    self._connected = False
-                    self._session = None
-                    logger.info("Disconnected from Elpis server")
+                    # Initialize the session
+                    await session.initialize()
+                    logger.info("Connected to Elpis inference server")
+
+                    try:
+                        yield self
+                    finally:
+                        self._connected = False
+                        self._session = None
+                        logger.info("Disconnected from Elpis server")
+        except Exception as e:
+            logger.error(f"Failed to connect to Elpis: {type(e).__name__}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            raise
 
     def _ensure_connected(self) -> None:
         """Raise if not connected."""
