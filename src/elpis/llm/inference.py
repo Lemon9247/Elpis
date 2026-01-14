@@ -9,11 +9,12 @@ from llama_cpp import Llama
 from loguru import logger
 
 from elpis.config.settings import ModelSettings
+from elpis.llm.base import InferenceEngine
 from elpis.utils.exceptions import LLMInferenceError, ModelLoadError
 from elpis.utils.hardware import HardwareBackend, detect_hardware
 
 
-class LlamaInference:
+class LlamaInference(InferenceEngine):
     """Async wrapper around llama-cpp-python for LLM inference."""
 
     def __init__(self, settings: ModelSettings):
@@ -53,6 +54,7 @@ class LlamaInference:
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        emotion_coefficients: Optional[Dict[str, float]] = None,
     ) -> str:
         """
         Generate chat completion asynchronously.
@@ -62,10 +64,16 @@ class LlamaInference:
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
             top_p: Top-p sampling parameter
+            emotion_coefficients: Steering vector coefficients (ignored by llama-cpp backend)
 
         Returns:
             Generated response text
         """
+        if emotion_coefficients:
+            logger.debug(
+                "Emotion coefficients provided but ignored by llama-cpp backend. "
+                "Use transformers backend for steering vector support."
+            )
         return await asyncio.to_thread(
             self._chat_completion_sync, messages, max_tokens, temperature, top_p
         )
@@ -95,6 +103,7 @@ class LlamaInference:
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
         temperature: Optional[float] = None,
+        emotion_coefficients: Optional[Dict[str, float]] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """
         Generate function calls using OpenAI-compatible format.
@@ -103,10 +112,13 @@ class LlamaInference:
             messages: List of chat messages
             tools: Available tools/functions
             temperature: Sampling temperature
+            emotion_coefficients: Steering vector coefficients (ignored by llama-cpp backend)
 
         Returns:
             List of tool calls or None if no tools should be called
         """
+        if emotion_coefficients:
+            logger.debug("Emotion coefficients ignored by llama-cpp backend")
         return await asyncio.to_thread(self._function_call_sync, messages, tools, temperature)
 
     def _function_call_sync(
@@ -136,6 +148,7 @@ class LlamaInference:
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        emotion_coefficients: Optional[Dict[str, float]] = None,
     ) -> AsyncIterator[str]:
         """
         Generate chat completion with streaming.
@@ -147,10 +160,13 @@ class LlamaInference:
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
             top_p: Top-p sampling parameter
+            emotion_coefficients: Steering vector coefficients (ignored by llama-cpp backend)
 
         Yields:
             Individual tokens as they are generated
         """
+        if emotion_coefficients:
+            logger.debug("Emotion coefficients ignored by llama-cpp backend")
         async for token in self._stream_in_thread(messages, max_tokens, temperature, top_p):
             yield token
 
