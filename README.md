@@ -249,28 +249,6 @@ ruff format .
 mypy src/elpis
 ```
 
-## Project Structure
-
-```
-src/
-  elpis/           # Inference MCP server
-   - config/        # Settings management
-   - emotion/       # Valence-arousal state and regulation
-   - llm/           # Inference backends (llama-cpp, transformers)
-   - server.py      # MCP server entry point
-
-  mnemosyne/       # Memory MCP server
-   - core/          # Memory models and consolidator
-   - storage/       # ChromaDB storage backend
-   - server.py      # MCP server entry point
-
-  psyche/          # TUI client
-   - client/        # Textual TUI components
-   - memory/        # Inference server with consolidation
-   - tools/         # Tool definitions and implementations
-   - mcp/           # MCP clients for Elpis and Mnemosyne
-```
-
 ## Roadmap
 
 - [x] Phase 1: Basic Agent Harness
