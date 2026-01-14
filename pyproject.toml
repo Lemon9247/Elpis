@@ -22,16 +22,12 @@ classifiers = [
 ]
 
 dependencies = [
-    "llama-cpp-python>=0.2.0",      # LLM inference (CPU/CUDA/ROCm)
-    "pydantic>=2.0",                # Data validation
-    "pydantic-settings>=2.0",       # Configuration
-    "loguru>=0.7.0",                # Logging
+    "elpis-inference",              # Extracted inference server package
     "prompt-toolkit>=3.0.52",       # Async REPL
     "rich>=13.0",                   # Output formatting
     "textual>=0.47.0",              # TUI framework
     "click>=8.0",                   # CLI framework
     "huggingface-hub>=0.20.0",      # Model downloads
-    "mcp>=1.0.0",                   # MCP server framework
 ]
 
 [project.optional-dependencies]
@@ -53,7 +49,7 @@ rocm = [
 ]
 
 [project.scripts]
-elpis-server = "elpis.server:main"
+elpis-server = "elpis_inference.cli:main"
 psyche = "psyche.cli:main"
 
 [tool.setuptools.packages.find]
