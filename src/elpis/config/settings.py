@@ -1,10 +1,14 @@
 """Pydantic settings models for Elpis configuration."""
 
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from elpis.llm.backends.llama_cpp.config import LlamaCppConfig
+    from elpis.llm.backends.transformers.config import TransformersConfig
 
 
 class ModelSettings(BaseSettings):
@@ -50,6 +54,45 @@ class ModelSettings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(env_prefix="ELPIS_MODEL_")
+
+    def to_llama_cpp_config(self) -> "LlamaCppConfig":
+        """Convert to llama-cpp backend config.
+
+        Returns:
+            LlamaCppConfig instance with relevant settings copied
+        """
+        from elpis.llm.backends.llama_cpp.config import LlamaCppConfig
+
+        return LlamaCppConfig(
+            path=self.path,
+            context_length=self.context_length,
+            gpu_layers=self.gpu_layers,
+            n_threads=self.n_threads,
+            temperature=self.temperature,
+            top_p=self.top_p,
+            max_tokens=self.max_tokens,
+            hardware_backend=self.hardware_backend,
+        )
+
+    def to_transformers_config(self) -> "TransformersConfig":
+        """Convert to transformers backend config.
+
+        Returns:
+            TransformersConfig instance with relevant settings copied
+        """
+        from elpis.llm.backends.transformers.config import TransformersConfig
+
+        return TransformersConfig(
+            path=self.path,
+            context_length=self.context_length,
+            temperature=self.temperature,
+            top_p=self.top_p,
+            max_tokens=self.max_tokens,
+            hardware_backend=self.hardware_backend,
+            torch_dtype=self.torch_dtype,
+            steering_layer=self.steering_layer,
+            emotion_vectors_dir=self.emotion_vectors_dir,
+        )
 
 
 class ToolSettings(BaseSettings):
