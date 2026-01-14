@@ -54,20 +54,25 @@ emotional_context
    - Enhanced `run_server()` with try/except/finally and logging (lines 617-631)
    - Added "Server exited normally" log in `main()` (line 648)
 
-## Root Cause Analysis (Connection Drop)
+## Root Cause Analysis (Connection Drop) - FOUND
 
-The connection drop issue is likely caused by one of:
+**Root Cause**: SIGSEGV in `ggml_compute_forward_mul_mat` in the llama.cpp CPU backend.
 
-1. **MCP stdio server exit**: The MCP library's `stdio_server()` exits when stdin is closed. This could happen if:
-   - The parent process (Psyche) closes the pipe
-   - An error in Psyche causes the pipe to be garbage collected
+The coredump analysis revealed:
+```
+Signal: 11 (SEGV)
+Stack trace of thread 412502:
+#0  0x00007fb16b96d021 n/a (libc.so.6 + 0x16d021)
+#1  0x00007fb168ecce59 ggml_compute_forward_mul_mat (libggml-cpu.so + 0x10e59)
+#2  0x00007fb168eceb98 n/a (libggml-cpu.so + 0x12b98)
+#3  0x00007fb16abcd737 gomp_thread_start (libgomp.so.1 + 0x21737)
+```
 
-2. **llama-cpp crash**: A native library crash would bypass Python's exception handling entirely. Common causes:
-   - Out of GPU memory
-   - Invalid model state
-   - Buffer overflow in C code
+The multi-threaded matrix multiplication in ggml has race conditions that cause segfaults, especially with higher thread counts (8 threads default).
 
-3. **Process timeout**: The subprocess might be getting killed by the OS for resource reasons.
+**Fix**: Reduced `n_threads` from 8 to 4 in both:
+- `src/elpis/config/settings.py`
+- `configs/config.default.toml`
 
 ## Testing
 
