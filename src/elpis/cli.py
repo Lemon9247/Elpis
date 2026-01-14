@@ -3,7 +3,7 @@
 import asyncio
 import sys
 
-from elpis_inference.server import initialize, run_server
+from elpis.server import initialize, run_server
 
 
 def main() -> None:

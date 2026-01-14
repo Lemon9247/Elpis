@@ -1,10 +1,5 @@
-"""Configuration management for Elpis."""
+"""Configuration management."""
 
-from elpis.config.settings import (
-    LoggingSettings,
-    ModelSettings,
-    Settings,
-    ToolSettings,
-)
+from elpis.config.settings import Settings, ModelSettings, EmotionSettings
 
-__all__ = ["Settings", "ModelSettings", "ToolSettings", "LoggingSettings"]
+__all__ = ["Settings", "ModelSettings", "EmotionSettings"]

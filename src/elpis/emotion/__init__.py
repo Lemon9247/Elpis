@@ -1,6 +1,6 @@
-"""Emotional regulation system for Elpis inference server."""
+"""Emotional regulation system."""
 
 from elpis.emotion.state import EmotionalState
-from elpis.emotion.regulation import HomeostasisRegulator
+from elpis.emotion.regulation import HomeostasisRegulator, EVENT_MAPPINGS
 
-__all__ = ["EmotionalState", "HomeostasisRegulator"]
+__all__ = ["EmotionalState", "HomeostasisRegulator", "EVENT_MAPPINGS"]
