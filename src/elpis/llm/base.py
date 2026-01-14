@@ -1,7 +1,7 @@
 """Abstract base class for LLM inference engines."""
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional
 
 
 class InferenceEngine(ABC):
@@ -10,7 +10,33 @@ class InferenceEngine(ABC):
 
     Defines the interface that all inference implementations must provide.
     Supports both sampling parameter modulation and steering vector coefficients.
+
+    Backend Capabilities
+    --------------------
+    Subclasses should define the following class attributes to describe
+    their capabilities:
+
+    SUPPORTS_STEERING : bool
+        Whether the backend supports steering vector injection for
+        activation-level emotional modulation. If False, emotion_coefficients
+        parameters will be logged but ignored.
+
+    MODULATION_TYPE : Literal["none", "sampling", "steering"]
+        How the backend achieves emotional modulation:
+        - "none": No emotional modulation support
+        - "sampling": Modulates via temperature/top_p adjustments
+        - "steering": Modulates via steering vector injection
+
+    Example
+    -------
+    >>> class MyBackend(InferenceEngine):
+    ...     SUPPORTS_STEERING = False
+    ...     MODULATION_TYPE = "sampling"
     """
+
+    # Capability flags - subclasses should override these
+    SUPPORTS_STEERING: bool = False
+    MODULATION_TYPE: Literal["none", "sampling", "steering"] = "none"
 
     @abstractmethod
     async def chat_completion(
