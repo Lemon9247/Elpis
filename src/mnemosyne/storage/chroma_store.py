@@ -181,9 +181,12 @@ class ChromaMemoryStore:
         # Search and combine results
         all_memories = []
         for collection in collections:
+            count = collection.count()
+            if count == 0:
+                continue  # Skip empty collections
             results = collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(n_results, collection.count()),
+                n_results=min(n_results, count),
             )
 
             for i in range(len(results["ids"][0])):

@@ -241,6 +241,9 @@ async def _handle_search_memories(args: Dict[str, Any]) -> Dict[str, Any]:
                 "id": m.id,
                 "content": m.content,
                 "summary": m.summary,
+                "memory_type": m.memory_type.value,
+                "tags": m.tags,
+                "emotional_context": m.emotional_context.to_dict() if m.emotional_context else None,
                 "importance_score": m.importance_score,
                 "created_at": m.created_at.isoformat(),
             }
