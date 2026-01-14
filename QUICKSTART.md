@@ -22,7 +22,7 @@ Elpis is an MCP inference server that modulates LLM generation based on emotiona
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/elpis.git
+git clone https://github.com/Lemon9247/Elpis.git
 cd elpis
 ```
 
@@ -84,18 +84,20 @@ python examples/03_steering_vectors.py
 
 See [examples/README.md](examples/README.md) for details.
 
-### Option B: Use as MCP Server
+### Option B: Use Psyche TUI
 
-Start Elpis as an MCP server and connect with a client:
+Psyche is the interactive TUI client that automatically manages the Elpis and Mnemosyne servers:
 
-**Terminal 1 - Start server:**
-```bash
-elpis-server
-```
-
-**Terminal 2 - Connect with Psyche client:**
 ```bash
 psyche
+```
+
+That's it! Psyche spawns the servers as subprocesses via MCP's stdio transport - no need to start them manually.
+
+**Note:** You can also run standalone servers if needed:
+```bash
+elpis-server      # Inference server only
+mnemosyne-server  # Memory server only
 ```
 
 ### Option C: Use Programmatically
@@ -382,17 +384,15 @@ Ensure:
 
 ## Resources
 
-- [Full Documentation](README.md)
+- [Full Documentation](https://lemon9247.github.io/Elpis/)
 - [Examples](examples/)
-- [API Reference](src/elpis/)
-- [Issue Tracker](https://github.com/yourusername/elpis/issues)
+- [Issue Tracker](https://github.com/Lemon9247/Elpis/issues)
 
 ## Getting Help
 
-- **Documentation**: Read the [full README](README.md)
+- **Documentation**: [https://lemon9247.github.io/Elpis/](https://lemon9247.github.io/Elpis/)
 - **Examples**: Check [examples/](examples/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/elpis/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/elpis/discussions)
+- **Issues**: [GitHub Issues](https://github.com/Lemon9247/Elpis/issues)
 
 ---
 
