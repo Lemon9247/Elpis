@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import os
 import sys
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -19,7 +21,8 @@ from mcp.types import (
 from elpis.config.settings import Settings
 from elpis.emotion.state import EmotionalState
 from elpis.emotion.regulation import HomeostasisRegulator
-from elpis.llm.inference import LlamaInference
+from elpis.llm.base import InferenceEngine
+from elpis.llm.backends import create_backend
 
 
 @dataclass
@@ -31,18 +34,45 @@ class StreamState:
     error: Optional[str] = None
 
 
-# Global state (initialized at startup)
-llm: Optional[LlamaInference] = None
-emotion_state: Optional[EmotionalState] = None
-regulator: Optional[HomeostasisRegulator] = None
+@dataclass
+class ServerContext:
+    """Container for all server dependencies.
+
+    This dataclass holds all the initialized components needed for the
+    server to function, providing a clean dependency injection pattern
+    instead of global variables.
+
+    Attributes:
+        llm: The inference engine for LLM operations
+        emotion_state: Current emotional state (valence/arousal)
+        regulator: Homeostasis regulator for emotional updates
+        settings: Server configuration settings
+        active_streams: Dict mapping stream IDs to their state
+    """
+    llm: InferenceEngine
+    emotion_state: EmotionalState
+    regulator: HomeostasisRegulator
+    settings: Settings
+    active_streams: Dict[str, StreamState] = field(default_factory=dict)
+
+
+# Global context and server (initialized at startup)
+_context: Optional[ServerContext] = None
 server = Server("elpis-inference")
-active_streams: Dict[str, StreamState] = {}
 
 
-def _ensure_initialized() -> None:
-    """Ensure server components are initialized."""
-    if llm is None or emotion_state is None or regulator is None:
+def get_context() -> ServerContext:
+    """Get the current server context.
+
+    Returns:
+        The initialized ServerContext
+
+    Raises:
+        RuntimeError: If server is not initialized
+    """
+    if _context is None:
         raise RuntimeError("Server not initialized. Call initialize() first.")
+    return _context
 
 
 @server.list_tools()
@@ -218,25 +248,25 @@ async def list_tools() -> List[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     """Handle tool calls."""
-    _ensure_initialized()
+    ctx = get_context()
 
     try:
         if name == "generate":
-            result = await _handle_generate(arguments)
+            result = await _handle_generate(ctx, arguments)
         elif name == "function_call":
-            result = await _handle_function_call(arguments)
+            result = await _handle_function_call(ctx, arguments)
         elif name == "update_emotion":
-            result = await _handle_update_emotion(arguments)
+            result = await _handle_update_emotion(ctx, arguments)
         elif name == "reset_emotion":
-            result = await _handle_reset_emotion()
+            result = await _handle_reset_emotion(ctx)
         elif name == "get_emotion":
-            result = await _handle_get_emotion()
+            result = await _handle_get_emotion(ctx)
         elif name == "generate_stream_start":
-            result = await _handle_generate_stream_start(arguments)
+            result = await _handle_generate_stream_start(ctx, arguments)
         elif name == "generate_stream_read":
-            result = await _handle_generate_stream_read(arguments)
+            result = await _handle_generate_stream_read(ctx, arguments)
         elif name == "generate_stream_cancel":
-            result = await _handle_generate_stream_cancel(arguments)
+            result = await _handle_generate_stream_cancel(ctx, arguments)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -247,7 +277,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
-async def _handle_generate(args: Dict[str, Any]) -> Dict[str, Any]:
+async def _handle_generate(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle generate tool call."""
     messages = args["messages"]
     max_tokens = args.get("max_tokens", 2048)
@@ -256,31 +286,35 @@ async def _handle_generate(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Apply emotional modulation if enabled and no override
     if emotional_modulation and temperature is None:
-        params = emotion_state.get_modulated_params()
+        params = ctx.emotion_state.get_modulated_params()
         temperature = params["temperature"]
         top_p = params["top_p"]
     else:
         top_p = None
 
+    # Get steering coefficients for emotional expression
+    emotion_coefficients = ctx.emotion_state.get_steering_coefficients()
+
     # Run inference
-    content = await llm.chat_completion(
+    content = await ctx.llm.chat_completion(
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
+        emotion_coefficients=emotion_coefficients,
     )
 
     # Update emotional state based on response
-    regulator.process_response(content)
+    ctx.regulator.process_response(content)
 
     return {
         "content": content,
-        "emotional_state": emotion_state.to_dict(),
-        "modulated_params": emotion_state.get_modulated_params(),
+        "emotional_state": ctx.emotion_state.to_dict(),
+        "modulated_params": ctx.emotion_state.get_modulated_params(),
     }
 
 
-async def _handle_function_call(args: Dict[str, Any]) -> Dict[str, Any]:
+async def _handle_function_call(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle function_call tool call."""
     messages = args["messages"]
     tools = args["tools"]
@@ -288,44 +322,48 @@ async def _handle_function_call(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Apply emotional modulation if no override
     if temperature is None:
-        params = emotion_state.get_modulated_params()
+        params = ctx.emotion_state.get_modulated_params()
         temperature = params["temperature"]
 
-    tool_calls = await llm.function_call(
+    # Get steering coefficients for emotional expression
+    emotion_coefficients = ctx.emotion_state.get_steering_coefficients()
+
+    tool_calls = await ctx.llm.function_call(
         messages=messages,
         tools=tools,
         temperature=temperature,
+        emotion_coefficients=emotion_coefficients,
     )
 
     return {
         "tool_calls": tool_calls,
-        "emotional_state": emotion_state.to_dict(),
+        "emotional_state": ctx.emotion_state.to_dict(),
     }
 
 
-async def _handle_update_emotion(args: Dict[str, Any]) -> Dict[str, Any]:
+async def _handle_update_emotion(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle update_emotion tool call."""
     event_type = args["event_type"]
     intensity = args.get("intensity", 1.0)
     context = args.get("context")
 
-    regulator.process_event(event_type, intensity, context)
+    ctx.regulator.process_event(event_type, intensity, context)
 
-    return emotion_state.to_dict()
+    return ctx.emotion_state.to_dict()
 
 
-async def _handle_reset_emotion() -> Dict[str, Any]:
+async def _handle_reset_emotion(ctx: ServerContext) -> Dict[str, Any]:
     """Handle reset_emotion tool call."""
-    emotion_state.reset()
-    return emotion_state.to_dict()
+    ctx.emotion_state.reset()
+    return ctx.emotion_state.to_dict()
 
 
-async def _handle_get_emotion() -> Dict[str, Any]:
+async def _handle_get_emotion(ctx: ServerContext) -> Dict[str, Any]:
     """Handle get_emotion tool call."""
-    return emotion_state.to_dict()
+    return ctx.emotion_state.to_dict()
 
 
-async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
+async def _handle_generate_stream_start(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle generate_stream_start tool call.
 
@@ -339,7 +377,7 @@ async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Apply emotional modulation if enabled and no override
     if emotional_modulation and temperature is None:
-        params = emotion_state.get_modulated_params()
+        params = ctx.emotion_state.get_modulated_params()
         temperature = params["temperature"]
         top_p = params["top_p"]
     else:
@@ -348,7 +386,14 @@ async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
     # Create stream state
     stream_id = str(uuid.uuid4())
     stream_state = StreamState()
-    active_streams[stream_id] = stream_state
+    ctx.active_streams[stream_id] = stream_state
+
+    # Get steering coefficients for emotional expression
+    emotion_coefficients = ctx.emotion_state.get_steering_coefficients()
+
+    # Capture context references for the closure
+    llm = ctx.llm
+    regulator = ctx.regulator
 
     # Start background task to generate tokens
     async def stream_producer():
@@ -358,6 +403,7 @@ async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                emotion_coefficients=emotion_coefficients,
             ):
                 stream_state.buffer.append(token)
         except Exception as e:
@@ -375,11 +421,11 @@ async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "stream_id": stream_id,
         "status": "started",
-        "emotional_state": emotion_state.to_dict(),
+        "emotional_state": ctx.emotion_state.to_dict(),
     }
 
 
-async def _handle_generate_stream_read(args: Dict[str, Any]) -> Dict[str, Any]:
+async def _handle_generate_stream_read(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle generate_stream_read tool call.
 
@@ -387,10 +433,10 @@ async def _handle_generate_stream_read(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     stream_id = args["stream_id"]
 
-    if stream_id not in active_streams:
+    if stream_id not in ctx.active_streams:
         return {"error": f"Unknown stream_id: {stream_id}"}
 
-    stream_state = active_streams[stream_id]
+    stream_state = ctx.active_streams[stream_id]
 
     # Get new tokens since last read
     new_tokens = stream_state.buffer[stream_state.cursor:]
@@ -409,13 +455,13 @@ async def _handle_generate_stream_read(args: Dict[str, Any]) -> Dict[str, Any]:
     # Clean up completed streams
     if stream_state.is_complete:
         result["full_content"] = "".join(stream_state.buffer)
-        result["emotional_state"] = emotion_state.to_dict()
-        del active_streams[stream_id]
+        result["emotional_state"] = ctx.emotion_state.to_dict()
+        del ctx.active_streams[stream_id]
 
     return result
 
 
-async def _handle_generate_stream_cancel(args: Dict[str, Any]) -> Dict[str, Any]:
+async def _handle_generate_stream_cancel(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle generate_stream_cancel tool call.
 
@@ -424,13 +470,13 @@ async def _handle_generate_stream_cancel(args: Dict[str, Any]) -> Dict[str, Any]
     """
     stream_id = args["stream_id"]
 
-    if stream_id not in active_streams:
+    if stream_id not in ctx.active_streams:
         return {"error": f"Unknown stream_id: {stream_id}"}
 
     # Mark as complete and remove
-    stream_state = active_streams[stream_id]
+    stream_state = ctx.active_streams[stream_id]
     stream_state.is_complete = True
-    del active_streams[stream_id]
+    del ctx.active_streams[stream_id]
 
     return {
         "status": "cancelled",
@@ -460,24 +506,27 @@ async def list_resources() -> List[Resource]:
 @server.read_resource()
 async def read_resource(uri: str) -> str:
     """Read an MCP resource."""
-    _ensure_initialized()
+    ctx = get_context()
 
     if uri == "emotion://state":
-        return json.dumps(emotion_state.to_dict(), indent=2)
+        return json.dumps(ctx.emotion_state.to_dict(), indent=2)
     elif uri == "emotion://events":
-        return json.dumps(regulator.get_available_events(), indent=2)
+        return json.dumps(ctx.regulator.get_available_events(), indent=2)
     else:
         raise ValueError(f"Unknown resource: {uri}")
 
 
-def initialize(settings: Optional[Settings] = None) -> None:
+def initialize(settings: Optional[Settings] = None) -> ServerContext:
     """
     Initialize server components.
 
     Args:
         settings: Optional settings object (uses defaults if not provided)
+
+    Returns:
+        Initialized ServerContext
     """
-    global llm, emotion_state, regulator
+    global _context
 
     if settings is None:
         settings = Settings()
@@ -487,12 +536,10 @@ def initialize(settings: Optional[Settings] = None) -> None:
 
     # Check if we should suppress stderr logging (e.g., when run as subprocess by Psyche TUI)
     # ELPIS_QUIET env var is set by Psyche to prevent logging from breaking the TUI
-    import os
     quiet_mode = os.environ.get("ELPIS_QUIET", "").lower() in ("1", "true", "yes")
 
     if quiet_mode:
         # Log to file when running as subprocess of a TUI
-        from pathlib import Path
         log_dir = Path.home() / ".elpis"
         log_dir.mkdir(exist_ok=True)
         logger.add(
@@ -516,9 +563,31 @@ def initialize(settings: Optional[Settings] = None) -> None:
     regulator = HomeostasisRegulator(emotion_state)
     logger.info("Emotional system initialized")
 
-    # Initialize LLM
-    llm = LlamaInference(settings.model)
-    logger.info("LLM initialized")
+    # Initialize LLM using the backend factory
+    try:
+        llm = create_backend(settings.model)
+        logger.info(f"Backend initialized: {settings.model.backend}")
+        logger.info(f"  - Supports steering: {llm.SUPPORTS_STEERING}")
+        logger.info(f"  - Modulation type: {llm.MODULATION_TYPE}")
+    except ValueError as e:
+        logger.error(f"Failed to create backend: {e}")
+        raise
+    except ImportError as e:
+        logger.error(
+            f"Failed to import backend '{settings.model.backend}': {e}. "
+            "Check that required dependencies are installed."
+        )
+        raise
+
+    # Create and store context
+    _context = ServerContext(
+        llm=llm,
+        emotion_state=emotion_state,
+        regulator=regulator,
+        settings=settings,
+    )
+
+    return _context
 
 
 async def run_server() -> None:

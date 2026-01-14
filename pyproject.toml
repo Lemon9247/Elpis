@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elpis"
-version = "0.1.0"
+version = "1.0.0"
 description = "MCP inference server with emotional regulation and Psyche client"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,16 +22,21 @@ classifiers = [
 ]
 
 dependencies = [
-    "llama-cpp-python>=0.2.0",      # LLM inference (CPU/CUDA/ROCm)
+    # Core dependencies (from elpis-inference and mnemosyne)
     "pydantic>=2.0",                # Data validation
     "pydantic-settings>=2.0",       # Configuration
     "loguru>=0.7.0",                # Logging
+    "mcp>=1.0.0",                   # MCP server framework
+    # Memory server dependencies (mnemosyne)
+    "chromadb>=0.4.0",              # Vector database
+    "sentence-transformers>=2.2.0", # Embedding generation
+    "numpy>=1.24.0",                # Numerical operations
+    # Client dependencies (psyche)
     "prompt-toolkit>=3.0.52",       # Async REPL
     "rich>=13.0",                   # Output formatting
     "textual>=0.47.0",              # TUI framework
     "click>=8.0",                   # CLI framework
     "huggingface-hub>=0.20.0",      # Model downloads
-    "mcp>=1.0.0",                   # MCP server framework
 ]
 
 [project.optional-dependencies]
@@ -44,6 +49,16 @@ dev = [
     "pre-commit>=3.4",
 ]
 
+# Inference backends
+llama-cpp = [
+    "llama-cpp-python>=0.2.0",
+]
+
+transformers = [
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+]
+
 cuda = [
     # Install with: CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python
 ]
@@ -52,8 +67,15 @@ rocm = [
     # Install with: CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install llama-cpp-python
 ]
 
+all = [
+    "llama-cpp-python>=0.2.0",
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+]
+
 [project.scripts]
-elpis-server = "elpis.server:main"
+elpis-server = "elpis.cli:main"
+mnemosyne-server = "mnemosyne.cli:main"
 psyche = "psyche.cli:main"
 
 [tool.setuptools.packages.find]
@@ -90,7 +112,7 @@ select = ["E", "F", "I", "N", "UP", "W", "B", "A", "C4", "RUF"]
 ignore = ["E501"]  # Line length handled by formatter
 
 [tool.ruff.isort]
-known-first-party = ["elpis", "psyche"]
+known-first-party = ["elpis", "psyche", "mnemosyne"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -102,5 +124,5 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*", "mcp.*", "textual.*"]
+module = ["llama_cpp.*", "prompt_toolkit.*", "huggingface_hub.*", "mcp.*", "textual.*", "chromadb.*", "sentence_transformers.*", "torch.*", "transformers.*"]
 ignore_missing_imports = true

@@ -346,3 +346,204 @@ class ElpisClient:
         """
         content = await self.read_resource("emotion://events")
         return json.loads(content) if content else {}
+
+
+@dataclass
+class ConsolidationResult:
+    """Result from memory consolidation."""
+
+    clusters_formed: int = 0
+    memories_promoted: int = 0
+    memories_archived: int = 0
+    memories_skipped: int = 0
+    duration_seconds: float = 0.0
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConsolidationResult":
+        """Create from dictionary returned by server."""
+        return cls(
+            clusters_formed=data.get("clusters_formed", 0),
+            memories_promoted=data.get("memories_promoted", 0),
+            memories_archived=data.get("memories_archived", 0),
+            memories_skipped=data.get("memories_skipped", 0),
+            duration_seconds=data.get("duration_seconds", 0.0),
+        )
+
+
+class MnemosyneClient:
+    """
+    MCP client for the Mnemosyne memory server.
+
+    Manages connection to the Mnemosyne server and provides methods for:
+    - Memory storage and retrieval
+    - Memory consolidation
+    - Memory statistics
+    """
+
+    def __init__(
+        self,
+        server_command: str = "mnemosyne-server",
+        server_args: Optional[List[str]] = None,
+    ):
+        """
+        Initialize the Mnemosyne client.
+
+        Args:
+            server_command: Command to launch the Mnemosyne server
+            server_args: Additional arguments for the server command
+        """
+        self.server_command = server_command
+        self.server_args = server_args or []
+        self._session: Optional[ClientSession] = None
+        self._connected = False
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if client is connected to server."""
+        return self._connected and self._session is not None
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncIterator["MnemosyneClient"]:
+        """
+        Context manager for connecting to the Mnemosyne server.
+
+        Usage:
+            async with client.connect() as connected_client:
+                result = await connected_client.should_consolidate()
+        """
+        server_params = StdioServerParameters(
+            command=self.server_command,
+            args=self.server_args,
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                self._session = session
+                self._connected = True
+
+                # Initialize the session
+                await session.initialize()
+                logger.info("Connected to Mnemosyne memory server")
+
+                try:
+                    yield self
+                finally:
+                    self._connected = False
+                    self._session = None
+                    logger.info("Disconnected from Mnemosyne server")
+
+    def _ensure_connected(self) -> None:
+        """Raise if not connected."""
+        if not self.is_connected:
+            raise RuntimeError("Not connected to Mnemosyne server. Use 'async with client.connect()'")
+
+    async def _call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on the server and return parsed result."""
+        self._ensure_connected()
+
+        result = await self._session.call_tool(name, arguments)
+
+        # Parse the JSON response
+        if result.content and len(result.content) > 0:
+            return json.loads(result.content[0].text)
+        return {}
+
+    async def should_consolidate(self) -> tuple[bool, str, int, int]:
+        """
+        Check if memory consolidation is recommended.
+
+        Returns:
+            Tuple of (should_consolidate, reason, short_term_count, long_term_count)
+        """
+        result = await self._call_tool("should_consolidate", {})
+        return (
+            result.get("should_consolidate", False),
+            result.get("reason", ""),
+            result.get("short_term_count", 0),
+            result.get("long_term_count", 0),
+        )
+
+    async def consolidate_memories(
+        self,
+        importance_threshold: float = 0.6,
+        similarity_threshold: float = 0.85,
+    ) -> ConsolidationResult:
+        """
+        Run memory consolidation cycle.
+
+        Args:
+            importance_threshold: Minimum importance for promotion (0.0 to 1.0)
+            similarity_threshold: Similarity threshold for clustering (0.0 to 1.0)
+
+        Returns:
+            ConsolidationResult with statistics
+        """
+        result = await self._call_tool("consolidate_memories", {
+            "importance_threshold": importance_threshold,
+            "similarity_threshold": similarity_threshold,
+        })
+        return ConsolidationResult.from_dict(result)
+
+    async def store_memory(
+        self,
+        content: str,
+        summary: Optional[str] = None,
+        memory_type: str = "episodic",
+        tags: Optional[List[str]] = None,
+        emotional_context: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Store a new memory.
+
+        Args:
+            content: Memory content
+            summary: Brief summary
+            memory_type: Type of memory (episodic, semantic, procedural, emotional)
+            tags: Optional tags
+            emotional_context: Optional emotional state {valence, arousal}
+
+        Returns:
+            Dict with memory_id and status
+        """
+        arguments: Dict[str, Any] = {
+            "content": content,
+            "memory_type": memory_type,
+        }
+        if summary:
+            arguments["summary"] = summary
+        if tags:
+            arguments["tags"] = tags
+        if emotional_context:
+            arguments["emotional_context"] = emotional_context
+
+        return await self._call_tool("store_memory", arguments)
+
+    async def search_memories(
+        self,
+        query: str,
+        n_results: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search memories by semantic similarity.
+
+        Args:
+            query: Search query
+            n_results: Number of results to return
+
+        Returns:
+            List of matching memories
+        """
+        result = await self._call_tool("search_memories", {
+            "query": query,
+            "n_results": n_results,
+        })
+        return result.get("results", [])
+
+    async def get_memory_stats(self) -> Dict[str, int]:
+        """
+        Get memory statistics.
+
+        Returns:
+            Dict with total_memories, short_term, long_term counts
+        """
+        return await self._call_tool("get_memory_stats", {})
