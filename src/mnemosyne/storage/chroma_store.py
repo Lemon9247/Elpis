@@ -255,3 +255,189 @@ class ChromaMemoryStore:
             return self.short_term.count()
         else:
             return self.short_term.count() + self.long_term.count()
+
+    def get_all_short_term(self, limit: int = 1000) -> List[Memory]:
+        """
+        Get all short-term memories for consolidation evaluation.
+
+        Args:
+            limit: Maximum number of memories to retrieve
+
+        Returns:
+            List of short-term memories
+        """
+        try:
+            count = self.short_term.count()
+            if count == 0:
+                return []
+
+            # Get all short-term memories up to limit
+            result = self.short_term.get(
+                limit=min(count, limit),
+                include=["documents", "metadatas"]
+            )
+
+            memories = []
+            for i in range(len(result["ids"])):
+                try:
+                    memory = self._result_to_memory(result, i)
+                    memories.append(memory)
+                except Exception as e:
+                    logger.warning(f"Failed to parse memory {result['ids'][i]}: {e}")
+
+            logger.debug(f"Retrieved {len(memories)} short-term memories")
+            return memories
+        except Exception as e:
+            logger.warning(f"Failed to get short-term memories: {e}")
+            return []
+
+    def get_short_term_count(self) -> int:
+        """
+        Efficient count of short-term buffer size.
+
+        Returns:
+            Number of memories in short-term storage
+        """
+        try:
+            return self.short_term.count()
+        except Exception as e:
+            logger.warning(f"Failed to count short-term memories: {e}")
+            return 0
+
+    def get_embeddings_batch(self, memory_ids: List[str]) -> Dict[str, List[float]]:
+        """
+        Get embeddings for multiple memories by ID.
+
+        Used for clustering similarity computation during consolidation.
+
+        Args:
+            memory_ids: List of memory IDs to get embeddings for
+
+        Returns:
+            Dictionary mapping memory_id to embedding vector
+        """
+        if not memory_ids:
+            return {}
+
+        embeddings_map: Dict[str, List[float]] = {}
+
+        try:
+            # Query short_term collection with embeddings
+            result = self.short_term.get(
+                ids=memory_ids,
+                include=["embeddings"]
+            )
+
+            if result["ids"] and result["embeddings"]:
+                for i, memory_id in enumerate(result["ids"]):
+                    if result["embeddings"][i] is not None:
+                        embeddings_map[memory_id] = result["embeddings"][i]
+
+            logger.debug(f"Retrieved embeddings for {len(embeddings_map)} memories")
+        except Exception as e:
+            logger.warning(f"Failed to get embeddings batch: {e}")
+
+        return embeddings_map
+
+    def promote_memory(self, memory_id: str) -> bool:
+        """
+        Move a memory from short_term to long_term collection.
+
+        Args:
+            memory_id: ID of the memory to promote
+
+        Returns:
+            True on success, False otherwise
+        """
+        try:
+            # Get from short_term with all data
+            result = self.short_term.get(
+                ids=[memory_id],
+                include=["embeddings", "documents", "metadatas"]
+            )
+
+            if not result["ids"]:
+                logger.warning(f"Memory {memory_id} not found in short_term")
+                return False
+
+            # Extract data
+            embedding = result["embeddings"][0]
+            document = result["documents"][0]
+            metadata = result["metadatas"][0].copy()
+
+            # Update status to LONG_TERM
+            metadata["status"] = MemoryStatus.LONG_TERM.value
+
+            # Add to long_term collection
+            self.long_term.add(
+                ids=[memory_id],
+                embeddings=[embedding],
+                documents=[document],
+                metadatas=[metadata]
+            )
+
+            # Delete from short_term
+            self.short_term.delete(ids=[memory_id])
+
+            logger.debug(f"Promoted memory {memory_id} to long-term storage")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to promote memory {memory_id}: {e}")
+            return False
+
+    def delete_memory(self, memory_id: str) -> bool:
+        """
+        Delete a memory from either collection.
+
+        Tries short_term first, then long_term.
+
+        Args:
+            memory_id: ID of the memory to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        # Try short_term first
+        try:
+            result = self.short_term.get(ids=[memory_id])
+            if result["ids"]:
+                self.short_term.delete(ids=[memory_id])
+                logger.debug(f"Deleted memory {memory_id} from short_term")
+                return True
+        except Exception as e:
+            logger.debug(f"Memory {memory_id} not in short_term: {e}")
+
+        # Try long_term
+        try:
+            result = self.long_term.get(ids=[memory_id])
+            if result["ids"]:
+                self.long_term.delete(ids=[memory_id])
+                logger.debug(f"Deleted memory {memory_id} from long_term")
+                return True
+        except Exception as e:
+            logger.debug(f"Memory {memory_id} not in long_term: {e}")
+
+        logger.warning(f"Memory {memory_id} not found in any collection")
+        return False
+
+    def batch_delete(self, memory_ids: List[str]) -> int:
+        """
+        Delete multiple memories.
+
+        Args:
+            memory_ids: List of memory IDs to delete
+
+        Returns:
+            Count of successfully deleted memories
+        """
+        if not memory_ids:
+            return 0
+
+        deleted_count = 0
+
+        for memory_id in memory_ids:
+            if self.delete_memory(memory_id):
+                deleted_count += 1
+
+        logger.debug(f"Batch deleted {deleted_count}/{len(memory_ids)} memories")
+        return deleted_count
