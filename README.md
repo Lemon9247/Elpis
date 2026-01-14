@@ -65,40 +65,6 @@ The system uses homeostatic regulation with decay toward baseline, responding to
 - `frustration` - Negative valence, high arousal
 - `idle` - Gradual arousal decrease
 
-## MCP Tools
-
-Elpis exposes these MCP tools:
-
-| Tool | Description |
-|------|-------------|
-| `generate` | Text generation with emotional modulation |
-| `function_call` | Tool/function call generation |
-| `update_emotion` | Trigger an emotional event |
-| `reset_emotion` | Reset to baseline state |
-| `get_emotion` | Get current emotional state |
-
-## MCP Resources
-
-| Resource URI | Description |
-|--------------|-------------|
-| `emotion://state` | Current valence-arousal state |
-| `emotion://events` | Available emotional event types |
-
-## Mnemosyne MCP Tools
-
-Mnemosyne exposes these MCP tools:
-
-| Tool | Description |
-|------|-------------|
-| `store_memory` | Store a new memory with emotional context |
-| `search_memories` | Semantic search across all memories |
-| `get_memory_stats` | Get memory counts by status |
-| `consolidate_memories` | Run clustering-based memory consolidation |
-| `should_consolidate` | Check if consolidation is recommended |
-| `get_memory_context` | Get relevant memories for context injection |
-| `delete_memory` | Delete a memory by ID |
-| `get_recent_memories` | Get memories from the last N hours |
-
 ## Installation
 
 ### Requirements
@@ -304,13 +270,6 @@ src/
    - tools/         # Tool definitions and implementations
    - mcp/           # MCP clients for Elpis and Mnemosyne
 ```
-
-## Test Results
-
-- **Elpis**: 81 tests
-- **Mnemosyne**: 87 tests
-- **Psyche**: 163 tests
-- **Total**: 331 tests
 
 ## Roadmap
 
