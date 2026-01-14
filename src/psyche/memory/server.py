@@ -80,6 +80,9 @@ class ServerConfig:
     # Post-interaction delay before idle thinking resumes
     post_interaction_delay: float = 60.0  # Wait 60s after user interaction before idle thoughts
 
+    # Generation timeout (prevents indefinite hangs)
+    generation_timeout: float = 120.0  # Max seconds for a single generation call
+
     # Memory consolidation settings
     enable_consolidation: bool = True  # Enable automatic memory consolidation
     consolidation_check_interval: float = 300.0  # Check every 5 minutes
@@ -345,9 +348,19 @@ When you need a tool, use this format and then STOP:
     async def _inference_loop(self) -> None:
         """Main continuous inference loop."""
         idle_task: asyncio.Task | None = None
+        loop_iteration = 0
 
         while self._running:
+            loop_iteration += 1
             try:
+                # Periodic health check logging (every 100 iterations)
+                if loop_iteration % 100 == 0:
+                    logger.debug(
+                        f"Inference loop health check: iteration={loop_iteration}, "
+                        f"state={self._state.value}, idle_task={idle_task is not None}, "
+                        f"queue_size={self._input_queue.qsize()}"
+                    )
+
                 # If idle thinking is running, wait for either user input or idle completion
                 if idle_task is not None and not idle_task.done():
                     self._state = ServerState.THINKING
@@ -361,6 +374,7 @@ When you need a tool, use this format and then STOP:
 
                     if input_task in done:
                         # User input arrived - cancel idle thinking and process input
+                        logger.debug("User input interrupted idle thinking")
                         idle_task.cancel()
                         try:
                             await idle_task
@@ -371,6 +385,7 @@ When you need a tool, use this format and then STOP:
                         await self._process_user_input(user_input)
                     else:
                         # Idle task completed - cancel the input wait
+                        logger.debug("Idle thinking completed")
                         input_task.cancel()
                         try:
                             await input_task
@@ -379,6 +394,8 @@ When you need a tool, use this format and then STOP:
                         # Check for any exception in idle task
                         try:
                             idle_task.result()
+                        except asyncio.CancelledError:
+                            logger.debug("Idle task was cancelled")
                         except Exception as e:
                             logger.exception(f"Error in idle thinking: {e}")
                         idle_task = None
@@ -390,15 +407,18 @@ When you need a tool, use this format and then STOP:
                             self._input_queue.get(),
                             timeout=self.config.idle_think_interval,
                         )
+                        logger.debug(f"Received user input: {user_input[:50]}...")
                         await self._process_user_input(user_input)
 
                     except asyncio.TimeoutError:
                         # No user input - check if we should start idle thinking
                         if self._can_start_idle_thinking():
+                            logger.debug("Starting idle thinking")
                             idle_task = asyncio.create_task(self._generate_idle_thought())
                         # If not allowed yet, loop will continue waiting for input
 
             except asyncio.CancelledError:
+                logger.info("Inference loop cancelled")
                 if idle_task:
                     idle_task.cancel()
                     try:
@@ -411,12 +431,19 @@ When you need a tool, use this format and then STOP:
                 # Brief pause before retrying
                 await asyncio.sleep(1.0)
 
-        logger.info("Inference loop stopped")
+        logger.info(f"Inference loop stopped after {loop_iteration} iterations")
 
     async def _process_user_input(self, text: str) -> None:
         """Process user input with ReAct loop for tool execution."""
         import time
         self._last_user_interaction = time.time()  # Track interaction time
+
+        # Verify connection before processing
+        if not self.client.is_connected:
+            logger.error("Elpis client disconnected, cannot process user input")
+            if self.on_response:
+                self.on_response("[Error: Inference server disconnected]")
+            return
 
         self._state = ServerState.THINKING
         logger.debug(f"Processing user input: {text[:50]}...")
@@ -433,20 +460,41 @@ When you need a tool, use this format and then STOP:
                 logger.debug("New user input detected, breaking ReAct loop")
                 return
 
+            # Re-check connection before each iteration
+            if not self.client.is_connected:
+                logger.error("Elpis client disconnected during processing")
+                if self.on_response:
+                    self.on_response("[Error: Inference server disconnected]")
+                return
+
             messages = self._compactor.get_api_messages()
 
-            # Generate response with streaming
+            # Generate response with streaming (with timeout)
             self._state = ServerState.THINKING
             response_tokens: List[str] = []
 
-            async for token in self.client.generate_stream(
-                messages=messages,
-                emotional_modulation=self.config.emotional_modulation,
-            ):
-                response_tokens.append(token)
-                # Stream token to UI callback
-                if self.on_token:
-                    self.on_token(token)
+            try:
+                # Use async_timeout context for the entire streaming operation
+                async with asyncio.timeout(self.config.generation_timeout):
+                    async for token in self.client.generate_stream(
+                        messages=messages,
+                        emotional_modulation=self.config.emotional_modulation,
+                    ):
+                        response_tokens.append(token)
+                        # Stream token to UI callback
+                        if self.on_token:
+                            self.on_token(token)
+            except asyncio.TimeoutError:
+                logger.error(f"Generation timed out after {self.config.generation_timeout}s")
+                if self.on_response:
+                    partial = "".join(response_tokens)
+                    self.on_response(partial + "\n\n[Generation timed out]")
+                return
+            except Exception as e:
+                logger.error(f"Generation failed: {e}")
+                if self.on_response:
+                    self.on_response(f"[Error: {e}]")
+                return
 
             response_text = "".join(response_tokens)
 
@@ -741,6 +789,11 @@ When you need a tool, use this format and then STOP:
         """Generate an idle thought during quiet periods with optional tool use."""
         self._state = ServerState.THINKING
 
+        # Verify connection before attempting generation
+        if not self.client.is_connected:
+            logger.warning("Elpis client disconnected, skipping idle thought")
+            return
+
         # Add a prompt for reflection
         reflection_prompt = self._get_reflection_prompt()
         reflection_messages = self._compactor.get_api_messages() + [
@@ -749,12 +802,27 @@ When you need a tool, use this format and then STOP:
 
         # ReAct loop for idle reflection (with restrictions)
         for iteration in range(self.config.max_idle_tool_iterations):
-            result = await self.client.generate(
-                messages=reflection_messages,
-                max_tokens=512,
-                temperature=self.config.think_temperature,
-                emotional_modulation=self.config.emotional_modulation,
-            )
+            # Re-check connection before each iteration
+            if not self.client.is_connected:
+                logger.warning("Elpis client disconnected during idle thought")
+                return
+
+            try:
+                result = await asyncio.wait_for(
+                    self.client.generate(
+                        messages=reflection_messages,
+                        max_tokens=512,
+                        temperature=self.config.think_temperature,
+                        emotional_modulation=self.config.emotional_modulation,
+                    ),
+                    timeout=self.config.generation_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Idle thought generation timed out after {self.config.generation_timeout}s")
+                return
+            except Exception as e:
+                logger.error(f"Idle thought generation failed: {e}")
+                return
 
             response_text = result.content
 

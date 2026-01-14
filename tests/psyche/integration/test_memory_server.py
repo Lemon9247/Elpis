@@ -28,6 +28,12 @@ class MockElpisClient:
         self.emotion_updates = []
         self.generate_stream_called = False
         self.generate_stream_messages = None
+        self._connected = True  # Default to connected for tests
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if client is connected to server."""
+        return self._connected
 
     async def generate(
         self,
