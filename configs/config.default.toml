@@ -11,8 +11,9 @@ path = "./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf"
 # For 16GB RAM systems: 8192-16384 recommended
 context_length = 32768
 
-# Number of layers to offload to GPU (0 = CPU only, 35 = all layers)
-gpu_layers = 35
+# Number of layers to offload to GPU (0 = CPU only, 32 = all layers for 8B model)
+# 25 layers fits in 6GB VRAM with room for KV cache
+gpu_layers = 25
 
 # CPU threads to use for inference
 # Set to 1 to avoid SIGSEGV race condition in ggml multi-threading

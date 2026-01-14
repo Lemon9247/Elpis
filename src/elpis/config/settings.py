@@ -28,7 +28,8 @@ class ModelSettings(BaseSettings):
         le=131072,
         description="Context window size in tokens",
     )
-    gpu_layers: int = Field(default=35, ge=0, le=100)
+    # 25 layers fits in 6GB VRAM with room for KV cache
+    gpu_layers: int = Field(default=25, ge=0, le=100)
     # Set to 1 to avoid SIGSEGV race condition in ggml CPU multi-threading
     # Even with GPU offloading, some ops run on CPU and the threading is buggy
     n_threads: int = Field(default=1, ge=1, le=64)
