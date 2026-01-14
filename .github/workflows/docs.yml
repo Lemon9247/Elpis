@@ -41,6 +41,7 @@ jobs:
         run: |
           cd docs
           make html
+          touch _build/html/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
