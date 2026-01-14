@@ -12,9 +12,10 @@ Tests cover:
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from elpis_inference.emotion.state import EmotionalState
-from elpis_inference.emotion.regulation import HomeostasisRegulator
-import elpis_inference.server as server_module
+from elpis.emotion.state import EmotionalState
+from elpis.emotion.regulation import HomeostasisRegulator
+from elpis.server import ServerContext
+import elpis.server as server_module
 
 
 @pytest.fixture
@@ -31,23 +32,29 @@ def mock_llm():
 
 @pytest.fixture
 def initialized_server(mock_llm):
-    """Initialize server with mock components."""
-    # Save original state
-    original_llm = server_module.llm
-    original_emotion = server_module.emotion_state
-    original_regulator = server_module.regulator
+    """Initialize server with mock components using ServerContext."""
+    # Save original context
+    original_context = server_module._context
 
-    # Set up test state
-    server_module.emotion_state = EmotionalState()
-    server_module.regulator = HomeostasisRegulator(server_module.emotion_state)
-    server_module.llm = mock_llm
+    # Create test context
+    emotion_state = EmotionalState()
+    settings = MagicMock()
+    settings.model = MagicMock()
+    settings.model.temperature = 0.7
+    settings.model.top_p = 0.9
 
-    yield server_module
+    ctx = ServerContext(
+        llm=mock_llm,
+        emotion_state=emotion_state,
+        regulator=HomeostasisRegulator(emotion_state),
+        settings=settings,
+    )
+    server_module._context = ctx
 
-    # Restore original state
-    server_module.llm = original_llm
-    server_module.emotion_state = original_emotion
-    server_module.regulator = original_regulator
+    yield ctx
+
+    # Restore original context
+    server_module._context = original_context
 
 
 class TestMCPServerTools:
@@ -216,51 +223,39 @@ class TestMCPServerResources:
 class TestServerInitialization:
     """Tests for server initialization."""
 
-    def test_ensure_initialized_raises_when_not_initialized(self):
-        """_ensure_initialized should raise if server not initialized."""
-        # Save and clear state
-        original_llm = server_module.llm
-        server_module.llm = None
+    def test_get_context_raises_when_not_initialized(self):
+        """get_context should raise if server not initialized."""
+        # Save and clear context
+        original_context = server_module._context
+        server_module._context = None
 
         try:
             with pytest.raises(RuntimeError, match="Server not initialized"):
-                server_module._ensure_initialized()
+                server_module.get_context()
         finally:
-            server_module.llm = original_llm
+            server_module._context = original_context
 
     @pytest.mark.integration
-    def test_initialize_creates_components(self):
-        """initialize() should create all server components."""
-        # Create mock LLM
-        mock_llm_instance = MagicMock()
-        mock_llm_class = MagicMock(return_value=mock_llm_instance)
-
-        # Create mock module with the LlamaInference class
-        mock_module = MagicMock()
-        mock_module.LlamaInference = mock_llm_class
-
-        # Save original
-        original_state = server_module.emotion_state
-        original_regulator = server_module.regulator
-        original_llm = server_module.llm
+    def test_initialize_creates_server_context(self):
+        """initialize() should create ServerContext with all components."""
+        # Save original context
+        original_context = server_module._context
 
         try:
-            # Mock the dynamic import
-            import sys
-            with patch.dict('sys.modules', {'elpis_inference.llm.inference': mock_module}):
-                server_module.initialize()
+            # Mock the backend creation
+            mock_llm = MagicMock()
+            with patch("elpis.server.create_backend", return_value=mock_llm):
+                ctx = server_module.initialize()
 
-                assert server_module.emotion_state is not None
-                assert server_module.regulator is not None
-                assert server_module.llm is not None
-                assert isinstance(server_module.emotion_state, EmotionalState)
-                assert isinstance(server_module.regulator, HomeostasisRegulator)
-                assert server_module.llm == mock_llm_instance
+                assert ctx is not None
+                assert isinstance(ctx, ServerContext)
+                assert ctx.llm == mock_llm
+                assert isinstance(ctx.emotion_state, EmotionalState)
+                assert isinstance(ctx.regulator, HomeostasisRegulator)
+                assert ctx.settings is not None
         finally:
             # Restore
-            server_module.emotion_state = original_state
-            server_module.regulator = original_regulator
-            server_module.llm = original_llm
+            server_module._context = original_context
 
 
 class TestEmotionalModulation:
