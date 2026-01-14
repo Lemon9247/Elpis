@@ -20,7 +20,6 @@ from elpis_inference.config.settings import Settings
 from elpis_inference.emotion.state import EmotionalState
 from elpis_inference.emotion.regulation import HomeostasisRegulator
 from elpis_inference.llm.base import InferenceEngine
-from elpis_inference.llm.inference import LlamaInference
 
 
 @dataclass
@@ -542,8 +541,16 @@ def initialize(settings: Optional[Settings] = None) -> None:
             )
             raise
     else:
-        llm = LlamaInference(settings.model)
-        logger.info("LlamaInference initialized")
+        try:
+            from elpis_inference.llm.inference import LlamaInference
+            llm = LlamaInference(settings.model)
+            logger.info("LlamaInference initialized")
+        except ImportError as e:
+            logger.error(
+                f"Failed to import LlamaInference: {e}. "
+                "Install with: pip install llama-cpp-python"
+            )
+            raise
 
 
 async def run_server() -> None:

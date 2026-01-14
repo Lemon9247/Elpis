@@ -5,11 +5,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from elpis.config.settings import ModelSettings
-from elpis.llm.inference import LlamaInference
 from elpis.utils.exceptions import LLMInferenceError, ModelLoadError
 from elpis.utils.hardware import HardwareBackend
 
+# Check if LlamaInference is available
+try:
+    from elpis.llm.inference import LlamaInference
+    LLAMA_CPP_AVAILABLE = True
+except ImportError:
+    LLAMA_CPP_AVAILABLE = False
 
+
+@pytest.mark.skipif(not LLAMA_CPP_AVAILABLE, reason="llama-cpp-python not installed")
 class TestLlamaInference:
     """Tests for LlamaInference class."""
 

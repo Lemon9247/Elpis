@@ -8,20 +8,26 @@ import asyncio
 import queue
 import threading
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, Iterator, List, Optional
 
 from loguru import logger
 
+# Runtime imports (for actual usage)
 try:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
+    torch = None  # type: ignore
     logger.warning(
         "transformers/torch not installed - TransformersInference unavailable. "
         "Install with: pip install torch transformers"
     )
+
+# Type-checking imports (for annotations only)
+if TYPE_CHECKING:
+    import torch
 
 from elpis_inference.config.settings import ModelSettings
 from elpis_inference.llm.base import InferenceEngine
@@ -84,7 +90,7 @@ class TransformersInference(InferenceEngine):
         self.model = self._load_model()
 
         # Emotion vectors (load if configured)
-        self.emotion_vectors: Dict[str, torch.Tensor] = {}
+        self.emotion_vectors: Dict[str, "torch.Tensor"] = {}
         if settings.emotion_vectors_dir:
             self._load_emotion_vectors(settings.emotion_vectors_dir)
         else:
@@ -155,7 +161,7 @@ class TransformersInference(InferenceEngine):
     def _compute_blended_steering(
         self,
         emotion_coefficients: Dict[str, float],
-    ) -> Optional[torch.Tensor]:
+    ) -> Optional["torch.Tensor"]:
         """
         Blend emotion vectors based on current emotional state.
 
@@ -197,7 +203,7 @@ class TransformersInference(InferenceEngine):
 
         return blended
 
-    def _apply_steering_hook(self, steering_vector: torch.Tensor) -> None:
+    def _apply_steering_hook(self, steering_vector: "torch.Tensor") -> None:
         """
         Apply a forward hook to inject steering vector at target layer.
 
