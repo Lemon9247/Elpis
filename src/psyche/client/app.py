@@ -216,7 +216,9 @@ class PsycheApp(App):
         self.query_one("#input", UserInput).focus()
 
     async def action_quit(self) -> None:
-        """Quit the application."""
+        """Quit the application with graceful memory consolidation."""
+        # Store context and consolidate memories before shutdown
+        await self.memory_server.shutdown_with_consolidation()
         await self.memory_server.stop()
         if self._server_task and not self._server_task.done():
             self._server_task.cancel()

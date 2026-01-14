@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from loguru import logger
 
 from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult, MnemosyneClient
-from psyche.memory.compaction import ContextCompactor, Message, create_message
+from psyche.memory.compaction import CompactionResult, ContextCompactor, Message, create_message
 from psyche.tools.tool_engine import ToolEngine, ToolSettings
 
 
@@ -145,6 +145,10 @@ class MemoryServer:
         self._last_idle_tool_use: float = 0.0  # Never used yet
         self._last_user_interaction: float = 0.0  # Track last user input time
         self._last_consolidation_check: float = 0.0  # Track last consolidation check
+
+        # Staged messages buffer for delayed Mnemosyne storage
+        # Messages are staged for one compaction cycle before being stored
+        self._staged_messages: List[Message] = []
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -334,7 +338,9 @@ When you need a tool, use this format and then STOP:
         logger.debug(f"Processing user input: {text[:50]}...")
 
         # Add user message to context
-        self._compactor.add_message(create_message("user", text))
+        compaction_result = self._compactor.add_message(create_message("user", text))
+        if compaction_result:
+            await self._handle_compaction_result(compaction_result)
 
         # ReAct loop - iterate until LLM provides final response without tools
         for iteration in range(self.config.max_tool_iterations):
@@ -373,7 +379,9 @@ When you need a tool, use this format and then STOP:
                     self.on_response(response_text)
 
                 # Add assistant's tool call to context
-                self._compactor.add_message(create_message("assistant", response_text))
+                compaction_result = self._compactor.add_message(create_message("assistant", response_text))
+                if compaction_result:
+                    await self._handle_compaction_result(compaction_result)
 
                 # Execute the tool
                 await self._execute_parsed_tool_call(tool_call)
@@ -382,7 +390,9 @@ When you need a tool, use this format and then STOP:
                 continue
 
             # No tool call - this is the final response
-            self._compactor.add_message(create_message("assistant", response_text))
+            compaction_result = self._compactor.add_message(create_message("assistant", response_text))
+            if compaction_result:
+                await self._handle_compaction_result(compaction_result)
 
             # Notify callback (tokens already streamed, this signals completion)
             if self.on_response:
@@ -491,10 +501,12 @@ When you need a tool, use this format and then STOP:
             if len(result_str) > max_chars:
                 result_str = result_str[:max_chars] + f"\n\n[... truncated, {len(result_str) - max_chars} chars omitted]"
 
-            self._compactor.add_message(create_message(
+            compaction_result = self._compactor.add_message(create_message(
                 "user",
                 f"[Tool result for {tool_name}]:\n{result_str}",
             ))
+            if compaction_result:
+                await self._handle_compaction_result(compaction_result)
 
             # Trigger emotion based on result
             if result.get("success", True):
@@ -506,10 +518,12 @@ When you need a tool, use this format and then STOP:
             logger.error(f"Tool execution failed: {e}")
 
             # Add error to context
-            self._compactor.add_message(create_message(
+            compaction_result = self._compactor.add_message(create_message(
                 "user",
                 f"[Tool error for {tool_name}]: {str(e)}",
             ))
+            if compaction_result:
+                await self._handle_compaction_result(compaction_result)
 
             # Trigger frustration emotion
             await self.client.update_emotion("frustration", intensity=0.5)
@@ -889,6 +903,106 @@ You MUST use the actual tools to see real data.
 
         except Exception as e:
             logger.error(f"Memory consolidation failed: {e}")
+
+    async def _store_messages_to_mnemosyne(self, messages: List[Message]) -> None:
+        """
+        Store messages to Mnemosyne short-term memory.
+
+        Args:
+            messages: List of messages to store as episodic memories
+        """
+        if not self.mnemosyne_client:
+            return
+
+        for msg in messages:
+            if msg.role == "system":
+                continue  # Skip system prompts
+
+            try:
+                # Get current emotional context
+                emotion = await self.client.get_emotion()
+
+                await self.mnemosyne_client.store_memory(
+                    content=msg.content,
+                    summary=msg.content[:100],
+                    memory_type="episodic",
+                    tags=["compacted", msg.role],
+                    emotional_context={
+                        "valence": emotion.valence,
+                        "arousal": emotion.arousal,
+                        "quadrant": emotion.quadrant,
+                    },
+                )
+                logger.debug(f"Stored {msg.role} message to Mnemosyne")
+            except Exception as e:
+                logger.error(f"Failed to store message to Mnemosyne: {e}")
+
+    async def _handle_compaction_result(self, result: CompactionResult) -> None:
+        """
+        Handle compaction result by storing staged messages and staging new ones.
+
+        Implements delayed storage: messages are staged for one compaction cycle
+        before being stored to Mnemosyne short-term memory.
+
+        Args:
+            result: CompactionResult from context compaction
+        """
+        # Store previously staged messages to Mnemosyne
+        if self._staged_messages and self.mnemosyne_client:
+            logger.debug(f"Storing {len(self._staged_messages)} staged messages to Mnemosyne")
+            await self._store_messages_to_mnemosyne(self._staged_messages)
+
+        # Stage newly dropped messages for next compaction cycle
+        self._staged_messages = result.dropped_messages
+        if self._staged_messages:
+            logger.debug(f"Staged {len(self._staged_messages)} messages for next cycle")
+
+    async def shutdown_with_consolidation(self) -> None:
+        """
+        Graceful shutdown with memory consolidation.
+
+        Stores all staged and remaining context messages to Mnemosyne,
+        then runs consolidation before shutdown.
+        """
+        logger.info("Starting graceful shutdown with memory consolidation...")
+
+        if not self.mnemosyne_client:
+            logger.debug("No Mnemosyne client, skipping memory consolidation")
+            return
+
+        try:
+            # Store any staged messages
+            if self._staged_messages:
+                logger.debug(f"Storing {len(self._staged_messages)} staged messages")
+                await self._store_messages_to_mnemosyne(self._staged_messages)
+                self._staged_messages = []
+
+            # Store remaining context messages (non-system)
+            remaining = [m for m in self._compactor.messages if m.role != "system"]
+            if remaining:
+                logger.debug(f"Storing {len(remaining)} remaining context messages")
+                await self._store_messages_to_mnemosyne(remaining)
+
+            # Run consolidation
+            logger.info("Running shutdown consolidation...")
+            result = await self.mnemosyne_client.consolidate_memories(
+                importance_threshold=self.config.consolidation_importance_threshold,
+                similarity_threshold=self.config.consolidation_similarity_threshold,
+            )
+            logger.info(
+                f"Shutdown consolidation complete: promoted {result.memories_promoted}, "
+                f"archived {result.memories_archived}"
+            )
+
+            if self.on_consolidation:
+                self.on_consolidation({
+                    "type": "shutdown",
+                    "memories_promoted": result.memories_promoted,
+                    "memories_archived": result.memories_archived,
+                })
+
+        except Exception as e:
+            logger.error(f"Shutdown consolidation failed: {e}")
 
     def clear_context(self) -> None:
         """Clear conversation context."""

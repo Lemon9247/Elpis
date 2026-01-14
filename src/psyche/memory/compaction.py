@@ -29,6 +29,7 @@ class CompactionResult:
     summary: Optional[Message]
     messages_compacted: int
     tokens_saved: int
+    dropped_messages: List[Message] = field(default_factory=list)
 
 
 class ContextCompactor:
@@ -145,6 +146,7 @@ class ContextCompactor:
             summary=self._summary,
             messages_compacted=len(messages_removed),
             tokens_saved=tokens_removed,
+            dropped_messages=messages_removed,
         )
 
     def _compact_with_summary(self) -> CompactionResult:
@@ -156,6 +158,9 @@ class ContextCompactor:
         if not to_summarize:
             # Can't summarize - fall back to sliding window
             return self._compact_sliding_window()
+
+        # Keep track of actual messages being dropped (not previous summary)
+        dropped = to_summarize.copy()
 
         # Include existing summary in what gets re-summarized
         if self._summary:
@@ -187,6 +192,7 @@ class ContextCompactor:
             summary=self._summary,
             messages_compacted=len(to_summarize),
             tokens_saved=int(tokens_removed - summary_tokens),
+            dropped_messages=dropped,
         )
 
     def clear(self) -> None:
