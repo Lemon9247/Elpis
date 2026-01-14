@@ -20,7 +20,16 @@ Signal: 11 (SEGV)
 #3  0x00007fb16abcd737 gomp_thread_start (libgomp.so.1)
 ```
 
-**Fix**: Set `n_threads=1` to disable CPU multi-threading entirely.
+**Fix**: Multiple steps required:
+1. Set `n_threads=1` in llama-cpp config
+2. Set environment variables to disable OpenMP/BLAS multi-threading:
+   ```python
+   os.environ.setdefault("OMP_NUM_THREADS", "1")
+   os.environ.setdefault("MKL_NUM_THREADS", "1")
+   os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+   ```
+
+The environment variables are critical because `n_threads=1` alone doesn't fully disable OpenMP - it only affects llama.cpp's worker pool, but OpenMP can still spawn threads internally for certain operations.
 
 ### 3. No GPU Offloading
 **Problem**: Despite `gpu_layers=35` config, `llama_supports_gpu_offload()` returned `False`. All 32 layers were running on CPU because llama-cpp-python was built without CUDA support.
@@ -58,6 +67,8 @@ n_threads = 1
 3. `src/elpis/server.py` - Signal handlers, lifecycle logging
 4. `src/elpis/config/settings.py` - Updated defaults for 6GB VRAM
 5. `configs/config.default.toml` - Updated defaults for 6GB VRAM
+6. `src/elpis/cli.py` - Set OMP_NUM_THREADS=1 at startup to fully disable OpenMP
+7. `src/elpis/llm/backends/llama_cpp/inference.py` - Set OMP/MKL/OPENBLAS threads to 1
 
 ## Diagnostic Tools Used
 

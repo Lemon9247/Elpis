@@ -21,6 +21,14 @@ Hardware Support:
     - CPU: Multi-threaded inference with n_threads
 """
 
+import os
+
+# Force single-threaded OpenMP before any libraries are loaded
+# This prevents SIGSEGV race conditions in ggml's multi-threaded CPU code
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 import asyncio
 import queue
 import threading

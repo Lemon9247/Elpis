@@ -1,5 +1,15 @@
 """CLI entry point for elpis-server command."""
 
+import os
+
+# Force single-threaded OpenMP/BLAS BEFORE any libraries are imported
+# This prevents SIGSEGV race conditions in ggml's multi-threaded CPU code
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
 import asyncio
 import sys
 
