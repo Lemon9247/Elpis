@@ -43,6 +43,43 @@ class ToolSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ELPIS_TOOLS_")
 
 
+class EmotionSettings(BaseSettings):
+    """Emotional regulation configuration."""
+
+    baseline_valence: float = Field(
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
+        description="Baseline valence (pleasant/unpleasant)",
+    )
+    baseline_arousal: float = Field(
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
+        description="Baseline arousal (high/low energy)",
+    )
+    decay_rate: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Rate of return to baseline per second",
+    )
+    max_delta: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=2.0,
+        description="Maximum single-event emotional shift",
+    )
+    steering_strength: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=3.0,
+        description="Global steering strength multiplier",
+    )
+
+    model_config = SettingsConfigDict(env_prefix="ELPIS_EMOTION_")
+
+
 class LoggingSettings(BaseSettings):
     """Logging configuration."""
 
@@ -57,6 +94,7 @@ class Settings(BaseSettings):
     """Root configuration for Elpis."""
 
     model: ModelSettings = Field(default_factory=ModelSettings)
+    emotion: EmotionSettings = Field(default_factory=EmotionSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
