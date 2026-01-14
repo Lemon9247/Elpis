@@ -195,14 +195,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
 async def _handle_store_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle store_memory tool call."""
-    # Create emotional context if provided
+    # Create emotional context if provided (with safe key access)
     emotional_ctx = None
     if args.get("emotional_context"):
         ec = args["emotional_context"]
         emotional_ctx = EmotionalContext(
-            valence=ec["valence"],
-            arousal=ec["arousal"],
-            quadrant=ec["quadrant"],
+            valence=ec.get("valence", 0.0),
+            arousal=ec.get("arousal", 0.0),
+            quadrant=ec.get("quadrant", "neutral"),
         )
 
     # Create memory
@@ -217,8 +217,8 @@ async def _handle_store_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     # Compute importance
     memory.importance_score = memory.compute_importance()
 
-    # Store
-    memory_store.add_memory(memory)
+    # Store (run in thread pool to avoid blocking event loop)
+    await asyncio.to_thread(memory_store.add_memory, memory)
 
     return {
         "id": memory.id,
@@ -232,7 +232,8 @@ async def _handle_search_memories(args: Dict[str, Any]) -> Dict[str, Any]:
     query = args["query"]
     n_results = args.get("n_results", 10)
 
-    memories = memory_store.search_memories(query, n_results)
+    # Run in thread pool to avoid blocking event loop
+    memories = await asyncio.to_thread(memory_store.search_memories, query, n_results)
 
     return {
         "query": query,
@@ -255,10 +256,14 @@ async def _handle_search_memories(args: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _handle_get_stats() -> Dict[str, Any]:
     """Handle get_memory_stats tool call."""
+    # Run counts in thread pool to avoid blocking event loop
+    total = await asyncio.to_thread(memory_store.count_memories)
+    short_term = await asyncio.to_thread(memory_store.count_memories, MemoryStatus.SHORT_TERM)
+    long_term = await asyncio.to_thread(memory_store.count_memories, MemoryStatus.LONG_TERM)
     return {
-        "total_memories": memory_store.count_memories(),
-        "short_term": memory_store.count_memories(MemoryStatus.SHORT_TERM),
-        "long_term": memory_store.count_memories(MemoryStatus.LONG_TERM),
+        "total_memories": total,
+        "short_term": short_term,
+        "long_term": long_term,
     }
 
 
@@ -270,9 +275,9 @@ async def _handle_consolidate_memories(args: Dict[str, Any]) -> Dict[str, Any]:
         similarity_threshold=args.get("similarity_threshold", 0.85),
     )
 
-    # Create consolidator and run
+    # Create consolidator and run in thread pool (long-running operation)
     consolidator = MemoryConsolidator(store=memory_store, config=config)
-    report = consolidator.consolidate()
+    report = await asyncio.to_thread(consolidator.consolidate)
 
     return report.to_dict()
 
@@ -280,13 +285,16 @@ async def _handle_consolidate_memories(args: Dict[str, Any]) -> Dict[str, Any]:
 async def _handle_should_consolidate() -> Dict[str, Any]:
     """Handle should_consolidate tool call."""
     consolidator = MemoryConsolidator(store=memory_store)
-    should, reason = consolidator.should_consolidate()
+    should, reason = await asyncio.to_thread(consolidator.should_consolidate)
+
+    short_term = await asyncio.to_thread(memory_store.count_memories, MemoryStatus.SHORT_TERM)
+    long_term = await asyncio.to_thread(memory_store.count_memories, MemoryStatus.LONG_TERM)
 
     return {
         "should_consolidate": should,
         "reason": reason,
-        "short_term_count": memory_store.count_memories(MemoryStatus.SHORT_TERM),
-        "long_term_count": memory_store.count_memories(MemoryStatus.LONG_TERM),
+        "short_term_count": short_term,
+        "long_term_count": long_term,
     }
 
 
@@ -295,8 +303,8 @@ async def _handle_get_memory_context(args: Dict[str, Any]) -> Dict[str, Any]:
     query = args["query"]
     max_tokens = args.get("max_tokens", 2000)
 
-    # Search for relevant memories
-    memories = memory_store.search_memories(query, n_results=20)
+    # Search for relevant memories (run in thread pool)
+    memories = await asyncio.to_thread(memory_store.search_memories, query, 20)
 
     # Format memories for context and track token usage
     formatted_memories = []
@@ -333,7 +341,7 @@ async def _handle_get_memory_context(args: Dict[str, Any]) -> Dict[str, Any]:
 async def _handle_delete_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle delete_memory tool call."""
     memory_id = args["memory_id"]
-    deleted = memory_store.delete_memory(memory_id)
+    deleted = await asyncio.to_thread(memory_store.delete_memory, memory_id)
 
     return {
         "deleted": deleted,
@@ -348,8 +356,10 @@ async def _handle_get_recent_memories(args: Dict[str, Any]) -> Dict[str, Any]:
 
     cutoff = datetime.now() - timedelta(hours=hours)
 
-    # Get all short-term memories and filter by time
-    short_term_memories = memory_store.get_all_short_term(limit=limit * 2)
+    # Get all short-term memories (run in thread pool)
+    short_term_memories = await asyncio.to_thread(
+        memory_store.get_all_short_term, limit * 2
+    )
 
     # Also search long-term for recent additions
     # Note: We'll combine and filter both collections

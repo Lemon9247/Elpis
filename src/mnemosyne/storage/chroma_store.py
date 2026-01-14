@@ -136,16 +136,16 @@ class ChromaMemoryStore:
             result = self.short_term.get(ids=[memory_id])
             if result["ids"]:
                 return self._result_to_memory(result, 0)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Memory {memory_id} not in short_term: {e}")
 
         # Try long-term
         try:
             result = self.long_term.get(ids=[memory_id])
             if result["ids"]:
                 return self._result_to_memory(result, 0)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Memory {memory_id} not in long_term: {e}")
 
         return None
 

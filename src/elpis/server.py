@@ -32,6 +32,7 @@ class StreamState:
     cursor: int = 0  # Position of last read
     is_complete: bool = False
     error: Optional[str] = None
+    task: Optional[asyncio.Task] = None  # Reference to producer task
 
 
 @dataclass
@@ -416,7 +417,8 @@ async def _handle_generate_stream_start(ctx: ServerContext, args: Dict[str, Any]
                 full_content = "".join(stream_state.buffer)
                 regulator.process_response(full_content)
 
-    asyncio.create_task(stream_producer())
+    # Store task reference for proper lifecycle management
+    stream_state.task = asyncio.create_task(stream_producer())
 
     return {
         "stream_id": stream_id,
@@ -456,7 +458,16 @@ async def _handle_generate_stream_read(ctx: ServerContext, args: Dict[str, Any])
     if stream_state.is_complete:
         result["full_content"] = "".join(stream_state.buffer)
         result["emotional_state"] = ctx.emotion_state.to_dict()
-        del ctx.active_streams[stream_id]
+        # Wait for task to fully complete before cleanup
+        if stream_state.task and not stream_state.task.done():
+            try:
+                await asyncio.wait_for(stream_state.task, timeout=1.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
+            except Exception as e:
+                logger.warning(f"Stream task error during cleanup: {e}")
+        # Safe deletion (handles concurrent access)
+        ctx.active_streams.pop(stream_id, None)
 
     return result
 
@@ -466,17 +477,26 @@ async def _handle_generate_stream_cancel(ctx: ServerContext, args: Dict[str, Any
     Handle generate_stream_cancel tool call.
 
     Cancels an active stream and cleans up resources.
-    Note: This marks the stream as cancelled but cannot stop the LLM mid-generation.
     """
     stream_id = args["stream_id"]
 
-    if stream_id not in ctx.active_streams:
+    stream_state = ctx.active_streams.get(stream_id)
+    if stream_state is None:
         return {"error": f"Unknown stream_id: {stream_id}"}
 
-    # Mark as complete and remove
-    stream_state = ctx.active_streams[stream_id]
+    # Cancel the producer task if still running
+    if stream_state.task and not stream_state.task.done():
+        stream_state.task.cancel()
+        try:
+            await stream_state.task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning(f"Error cancelling stream task: {e}")
+
+    # Mark as complete and remove safely
     stream_state.is_complete = True
-    del ctx.active_streams[stream_id]
+    ctx.active_streams.pop(stream_id, None)
 
     return {
         "status": "cancelled",

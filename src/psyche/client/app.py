@@ -88,9 +88,15 @@ class PsycheApp(App):
         """Run the memory server as a background task."""
         try:
             await self.memory_server.start()
+        except asyncio.CancelledError:
+            # Normal shutdown, don't show error
+            pass
         except Exception as e:
+            # Server died unexpectedly - show prominent error
             chat = self.query_one("#chat", ChatView)
-            chat.add_system_message(f"Server error: {e}")
+            chat.add_system_message(f"[CRITICAL] Server error: {e}")
+            # Mark server as dead for health checks
+            self._server_task = None
 
     def _on_token(self, token: str) -> None:
         """Handle streaming token callback."""
@@ -124,6 +130,17 @@ class PsycheApp(App):
 
     async def _update_emotional_display(self) -> None:
         """Periodically update emotional state display."""
+        # Check if server task is still alive
+        if self._server_task is None or self._server_task.done():
+            # Server died - update display to show disconnected state
+            status_display = self.query_one("#status-display", StatusDisplay)
+            status_display.state = "disconnected"
+            return
+
+        # Check connection state before making calls
+        if not self.memory_server.client.is_connected:
+            return
+
         try:
             emotion = await self.memory_server.client.get_emotion()
             display = self.query_one("#emotion-display", EmotionalStateDisplay)
