@@ -12,9 +12,9 @@ Tests cover:
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from elpis.emotion.state import EmotionalState
-from elpis.emotion.regulation import HomeostasisRegulator
-import elpis.server as server_module
+from elpis_inference.emotion.state import EmotionalState
+from elpis_inference.emotion.regulation import HomeostasisRegulator
+import elpis_inference.server as server_module
 
 
 @pytest.fixture
@@ -231,15 +231,23 @@ class TestServerInitialization:
     @pytest.mark.integration
     def test_initialize_creates_components(self):
         """initialize() should create all server components."""
-        with patch.object(server_module, 'LlamaInference') as mock_llm_class:
-            mock_llm_class.return_value = MagicMock()
+        # Create mock LLM
+        mock_llm_instance = MagicMock()
+        mock_llm_class = MagicMock(return_value=mock_llm_instance)
 
-            # Save original
-            original_state = server_module.emotion_state
-            original_regulator = server_module.regulator
-            original_llm = server_module.llm
+        # Create mock module with the LlamaInference class
+        mock_module = MagicMock()
+        mock_module.LlamaInference = mock_llm_class
 
-            try:
+        # Save original
+        original_state = server_module.emotion_state
+        original_regulator = server_module.regulator
+        original_llm = server_module.llm
+
+        try:
+            # Mock the dynamic import
+            import sys
+            with patch.dict('sys.modules', {'elpis_inference.llm.inference': mock_module}):
                 server_module.initialize()
 
                 assert server_module.emotion_state is not None
@@ -247,11 +255,12 @@ class TestServerInitialization:
                 assert server_module.llm is not None
                 assert isinstance(server_module.emotion_state, EmotionalState)
                 assert isinstance(server_module.regulator, HomeostasisRegulator)
-            finally:
-                # Restore
-                server_module.emotion_state = original_state
-                server_module.regulator = original_regulator
-                server_module.llm = original_llm
+                assert server_module.llm == mock_llm_instance
+        finally:
+            # Restore
+            server_module.emotion_state = original_state
+            server_module.regulator = original_regulator
+            server_module.llm = original_llm
 
 
 class TestEmotionalModulation:
