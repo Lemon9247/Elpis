@@ -178,8 +178,8 @@ class ChromaMemoryStore:
         else:
             collections = [self.short_term, self.long_term]
 
-        # Search and combine results
-        all_memories = []
+        # Search and combine results with distances
+        results_with_distance: List[tuple[Memory, float]] = []
         for collection in collections:
             count = collection.count()
             if count == 0:
@@ -187,19 +187,24 @@ class ChromaMemoryStore:
             results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=min(n_results, count),
+                include=["metadatas", "documents", "distances"],
             )
 
             for i in range(len(results["ids"][0])):
                 memory = self._query_result_to_memory(results, 0, i)
-                all_memories.append(memory)
+                distance = results["distances"][0][i]
+                results_with_distance.append((memory, distance))
 
-        # Sort by distance and return top N
-        all_memories.sort(
-            key=lambda m: m.importance_score,
-            reverse=True
-        )
-        
-        return all_memories[:n_results]
+        # Sort by distance (lower = more relevant)
+        results_with_distance.sort(key=lambda x: x[1])
+
+        # Return top N with relevance stored in metadata
+        top_results = []
+        for memory, distance in results_with_distance[:n_results]:
+            memory.metadata["relevance_distance"] = distance
+            top_results.append(memory)
+
+        return top_results
 
     def _result_to_memory(self, result: Dict, idx: int) -> Memory:
         """Convert ChromaDB get result to Memory object."""
