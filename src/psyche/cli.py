@@ -21,6 +21,11 @@ def _setup_logging_early() -> None:
 
 _setup_logging_early()
 
+# Apply MCP library patch BEFORE any MCP imports
+# Fixes: RuntimeError: dictionary keys changed during iteration
+from psyche.mcp_patch import apply_mcp_patch
+apply_mcp_patch()
+
 # Now safe to import modules that may use logging
 from psyche.client.app import PsycheApp
 from psyche.mcp.client import ElpisClient, MnemosyneClient
