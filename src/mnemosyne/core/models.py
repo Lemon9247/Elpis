@@ -166,5 +166,52 @@ class Memory:
             recency * 0.3 +
             access_factor * 0.3
         )
-        
+
         return importance
+
+
+@dataclass
+class ConsolidationConfig:
+    """Configuration for memory consolidation."""
+
+    importance_threshold: float = 0.6       # Min importance for promotion
+    min_age_hours: int = 1                  # Min age before eligible
+    max_batch_size: int = 50                # Max memories per consolidation
+    buffer_threshold: int = 100             # Recommend consolidation trigger
+    similarity_threshold: float = 0.85      # For clustering similar memories
+    min_cluster_size: int = 2               # Min memories to form cluster
+
+
+@dataclass
+class MemoryCluster:
+    """A cluster of semantically similar memories."""
+
+    memories: List[Memory] = field(default_factory=list)
+    centroid_embedding: List[float] = field(default_factory=list)
+    avg_importance: float = 0.0
+    dominant_type: MemoryType = MemoryType.EPISODIC
+
+
+@dataclass
+class ConsolidationReport:
+    """Report from a consolidation cycle."""
+
+    clusters_formed: int = 0
+    memories_promoted: int = 0
+    memories_archived: int = 0
+    memories_skipped: int = 0
+    total_processed: int = 0
+    duration_seconds: float = 0.0
+    cluster_summaries: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "clusters_formed": self.clusters_formed,
+            "memories_promoted": self.memories_promoted,
+            "memories_archived": self.memories_archived,
+            "memories_skipped": self.memories_skipped,
+            "total_processed": self.total_processed,
+            "duration_seconds": self.duration_seconds,
+            "cluster_summaries": self.cluster_summaries,
+        }
