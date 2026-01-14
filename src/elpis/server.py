@@ -262,12 +262,16 @@ async def _handle_generate(args: Dict[str, Any]) -> Dict[str, Any]:
     else:
         top_p = None
 
+    # Get steering coefficients for emotional expression
+    emotion_coefficients = emotion_state.get_steering_coefficients()
+
     # Run inference
     content = await llm.chat_completion(
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
+        emotion_coefficients=emotion_coefficients,
     )
 
     # Update emotional state based on response
@@ -291,10 +295,14 @@ async def _handle_function_call(args: Dict[str, Any]) -> Dict[str, Any]:
         params = emotion_state.get_modulated_params()
         temperature = params["temperature"]
 
+    # Get steering coefficients for emotional expression
+    emotion_coefficients = emotion_state.get_steering_coefficients()
+
     tool_calls = await llm.function_call(
         messages=messages,
         tools=tools,
         temperature=temperature,
+        emotion_coefficients=emotion_coefficients,
     )
 
     return {
@@ -350,6 +358,9 @@ async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
     stream_state = StreamState()
     active_streams[stream_id] = stream_state
 
+    # Get steering coefficients for emotional expression
+    emotion_coefficients = emotion_state.get_steering_coefficients()
+
     # Start background task to generate tokens
     async def stream_producer():
         try:
@@ -358,6 +369,7 @@ async def _handle_generate_stream_start(args: Dict[str, Any]) -> Dict[str, Any]:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                emotion_coefficients=emotion_coefficients,
             ):
                 stream_state.buffer.append(token)
         except Exception as e:
