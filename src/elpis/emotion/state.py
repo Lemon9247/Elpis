@@ -29,6 +29,12 @@ class EmotionalState:
     baseline_valence: float = 0.0
     baseline_arousal: float = 0.0
 
+    # Global steering strength multiplier for emotional expression
+    # 0.0 = no emotional modulation
+    # 1.0 = normal expression
+    # >1.0 = exaggerated expression (use carefully!)
+    steering_strength: float = 1.0
+
     def __post_init__(self) -> None:
         """Validate initial state bounds."""
         self.valence = max(-1.0, min(1.0, self.valence))
@@ -46,6 +52,7 @@ class EmotionalState:
                 "valence": self.baseline_valence,
                 "arousal": self.baseline_arousal,
             },
+            "steering_coefficients": self.get_steering_coefficients(),
         }
 
     def get_quadrant(self) -> str:
@@ -121,3 +128,56 @@ class EmotionalState:
         valence_diff = self.valence - self.baseline_valence
         arousal_diff = self.arousal - self.baseline_arousal
         return (valence_diff**2 + arousal_diff**2) ** 0.5
+
+    def get_steering_coefficients(self) -> Dict[str, float]:
+        """
+        Convert emotional state to steering vector blend coefficients.
+
+        Maps the 2D valence-arousal space to weights for each quadrant's
+        steering vector using bilinear interpolation. The coefficients
+        sum to 1.0 and represent how much of each "pure" emotional state
+        to blend.
+
+        Returns:
+            Dictionary mapping emotion names to blend weights (0.0 to 1.0)
+                {
+                    "excited": float,     # high valence, high arousal
+                    "frustrated": float,  # low valence, high arousal
+                    "calm": float,        # high valence, low arousal
+                    "depleted": float     # low valence, low arousal
+                }
+        """
+        # Normalize valence/arousal from [-1, 1] to [0, 1]
+        v = (self.valence + 1.0) / 2.0  # 0 = negative, 1 = positive
+        a = (self.arousal + 1.0) / 2.0  # 0 = low, 1 = high
+
+        # Compute quadrant weights using bilinear interpolation
+        # This gives smooth blending between adjacent emotional states
+        coefficients = {
+            "excited": v * a,                    # high valence, high arousal
+            "frustrated": (1.0 - v) * a,         # low valence, high arousal
+            "calm": v * (1.0 - a),               # high valence, low arousal
+            "depleted": (1.0 - v) * (1.0 - a),   # low valence, low arousal
+        }
+
+        # Apply global steering strength
+        # (allows personality-based scaling of emotional expression)
+        if self.steering_strength != 1.0:
+            coefficients = {
+                k: v * self.steering_strength
+                for k, v in coefficients.items()
+            }
+
+        return coefficients
+
+    def get_dominant_emotion(self) -> tuple[str, float]:
+        """
+        Get the strongest emotional component.
+
+        Useful for logging, debugging, or UI display.
+
+        Returns:
+            Tuple of (emotion_name, coefficient)
+        """
+        coefficients = self.get_steering_coefficients()
+        return max(coefficients.items(), key=lambda x: x[1])
