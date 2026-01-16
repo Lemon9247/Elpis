@@ -76,11 +76,11 @@ Track E: Psyche as Substrate (P3) - External agent access
 │  └─ Emotion-memory coupling                      │
 │                                                  │
 │  Internal Components:                            │
-│  ┌──────────────┐      ┌───────────────┐        │
-│  │    Elpis     │──────│  Mnemosyne    │        │
-│  │  (feels &    │  1:1 │  (remembers   │        │
-│  │   infers)    │ bound│   for Elpis)  │        │
-│  └──────────────┘      └───────────────┘        │
+│  ┌──────────────┐      ┌───────────────┐         │
+│  │    Elpis     │──────│  Mnemosyne    │         │
+│  │  (feels &    │  1:1 │  (remembers   │         │
+│  │   infers)    │ bound│   for Elpis)  │         │
+│  └──────────────┘      └───────────────┘         │
 │                                                  │
 │  Memory Tools ONLY:                              │
 │  ├─ recall_memories(query)                       │
@@ -91,9 +91,9 @@ Track E: Psyche as Substrate (P3) - External agent access
 │                                                  │
 │  External Interface (STANDARD PROTOCOLS):        │
 │  ┌────────────────────────────────────┐          │
-│  │  HTTP: /v1/chat/completions       │          │
+│  │  HTTP: /v1/chat/completions        │          │
 │  │        (OpenAI-compatible)         │          │
-│  │  MCP:  chat(), recall(), store()  │          │
+│  │  MCP:  chat(), recall(), store()   │          │
 │  │        (standard tools)            │          │
 │  └────────────────────────────────────┘          │
 └──────────────┬───────────────────────────────────┘
