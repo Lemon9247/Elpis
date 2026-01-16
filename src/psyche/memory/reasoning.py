@@ -9,37 +9,41 @@ class ParsedResponse:
     """Response with extracted reasoning.
 
     Attributes:
-        thinking: Content extracted from <thinking> tags
+        thinking: Content extracted from <reasoning> or <thinking> tags
         response: Content outside tags (the user-facing response)
-        has_thinking: Whether any <thinking> content was found
+        has_thinking: Whether any reasoning content was found
     """
     thinking: str
     response: str
     has_thinking: bool
 
 
-# Pattern to match <thinking>...</thinking> blocks (case-insensitive, multiline)
-THINKING_PATTERN = re.compile(
-    r"<thinking>(.*?)</thinking>",
+# Pattern to match <reasoning>...</reasoning> blocks (case-insensitive, multiline)
+# Also supports legacy <thinking> tags for backwards compatibility
+REASONING_PATTERN = re.compile(
+    r"<(?:reasoning|thinking)>(.*?)</(?:reasoning|thinking)>",
     re.DOTALL | re.IGNORECASE
 )
+
+# Legacy alias for backwards compatibility
+THINKING_PATTERN = REASONING_PATTERN
 
 
 def parse_reasoning(text: str) -> ParsedResponse:
     """
     Extract reasoning from model response.
 
-    Parses text that may contain <thinking>...</thinking> tags,
-    separating the internal reasoning from the user-facing response.
+    Parses text that may contain <reasoning>...</reasoning> tags (or legacy
+    <thinking> tags), separating the internal reasoning from the user-facing response.
 
     Args:
-        text: Raw model response that may contain <thinking> tags
+        text: Raw model response that may contain <reasoning> tags
 
     Returns:
-        ParsedResponse with separated thinking and response content
+        ParsedResponse with separated reasoning and response content
 
     Examples:
-        >>> result = parse_reasoning("<thinking>Let me think...</thinking>Hello!")
+        >>> result = parse_reasoning("<reasoning>Let me think...</reasoning>Hello!")
         >>> result.thinking
         'Let me think...'
         >>> result.response

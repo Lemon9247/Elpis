@@ -290,3 +290,49 @@ class TestThinkingPattern:
         assert len(matches) == 2
         assert matches[0] == "first"
         assert matches[1] == "second"
+
+
+class TestReasoningTags:
+    """Tests for the preferred <reasoning> tag format."""
+
+    def test_parse_with_reasoning_tags(self):
+        """Parse response with <reasoning> tags."""
+        text = """<reasoning>
+Let me analyze this problem.
+1. First, I need to understand what's being asked
+2. Then I can provide a solution
+</reasoning>
+
+Here's my answer to your question."""
+
+        result = parse_reasoning(text)
+
+        assert result.has_thinking is True
+        assert "analyze this problem" in result.thinking
+        assert "Here's my answer" in result.response
+        assert "<reasoning>" not in result.response
+
+    def test_parse_reasoning_case_insensitive(self):
+        """Reasoning tags are case-insensitive."""
+        text = "<REASONING>Thinking...</REASONING>Response"
+
+        result = parse_reasoning(text)
+
+        assert result.has_thinking is True
+        assert result.thinking == "Thinking..."
+        assert result.response == "Response"
+
+    def test_parse_mixed_reasoning_and_thinking_tags(self):
+        """Both <reasoning> and <thinking> tags work together."""
+        text = """<reasoning>First thought</reasoning>
+Middle text.
+<thinking>Second thought</thinking>
+End text."""
+
+        result = parse_reasoning(text)
+
+        assert result.has_thinking is True
+        assert "First thought" in result.thinking
+        assert "Second thought" in result.thinking
+        assert "Middle text" in result.response
+        assert "End text" in result.response

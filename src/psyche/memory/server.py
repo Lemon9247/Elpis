@@ -50,21 +50,21 @@ REASONING_PROMPT = """
 ## Reasoning Mode
 
 When responding to complex questions or tasks, first think through your approach
-inside <thinking> tags. Consider:
+inside <reasoning> tags. Consider:
 - What is being asked?
 - What information do I need?
 - What tools might help?
 - What's my approach?
 
-After thinking, provide your response outside the tags.
+After reasoning, provide your response outside the tags.
 
 Example:
-<thinking>
+<reasoning>
 The user wants to fix a bug in the login function. I should:
 1. First read the current implementation
 2. Identify the issue
 3. Propose a fix
-</thinking>
+</reasoning>
 
 I'll help you fix that bug. Let me start by reading the login function...
 """
@@ -223,8 +223,9 @@ class MemoryServer:
         if self.mnemosyne_client:
             self._register_memory_tools()
 
-        # Reasoning mode flag (when enabled, adds <thinking> tag instructions to system prompt)
-        self._reasoning_enabled: bool = False
+        # Reasoning mode flag (when enabled, adds <reasoning> tag instructions to system prompt)
+        # Enabled by default to encourage explicit reasoning
+        self._reasoning_enabled: bool = True
 
         # System prompt for the continuous agent
         self._system_prompt = self._build_system_prompt()
