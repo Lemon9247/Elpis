@@ -39,6 +39,7 @@ class ThoughtPanel(RichLog):
             "planning": "yellow",
             "idle": "dim",
             "memory": "magenta",
+            "reasoning": "green",
         }
         color = type_colors.get(thought_type, "white")
 

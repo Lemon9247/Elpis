@@ -45,6 +45,31 @@ class ServerState(Enum):
     SHUTTING_DOWN = "shutting_down"
 
 
+# Prompt addition for explicit reasoning/thinking mode
+REASONING_PROMPT = """
+## Reasoning Mode
+
+When responding to complex questions or tasks, first think through your approach
+inside <thinking> tags. Consider:
+- What is being asked?
+- What information do I need?
+- What tools might help?
+- What's my approach?
+
+After thinking, provide your response outside the tags.
+
+Example:
+<thinking>
+The user wants to fix a bug in the login function. I should:
+1. First read the current implementation
+2. Identify the issue
+3. Propose a fix
+</thinking>
+
+I'll help you fix that bug. Let me start by reading the login function...
+"""
+
+
 @dataclass
 class ThoughtEvent:
     """Event representing an internal thought."""
@@ -102,6 +127,10 @@ class ServerConfig:
     # Auto-retrieval settings
     enable_auto_retrieval: bool = True  # Enable automatic memory retrieval
     auto_retrieval_count: int = 3  # Number of memories to retrieve
+
+    # Auto-storage settings (importance-based automatic memory storage)
+    auto_storage: bool = True  # Enable automatic storage of important exchanges
+    auto_storage_threshold: float = 0.6  # Min importance score to trigger auto-storage
 
 
 class MemoryServer:
@@ -194,6 +223,9 @@ class MemoryServer:
         if self.mnemosyne_client:
             self._register_memory_tools()
 
+        # Reasoning mode flag (when enabled, adds <thinking> tag instructions to system prompt)
+        self._reasoning_enabled: bool = False
+
         # System prompt for the continuous agent
         self._system_prompt = self._build_system_prompt()
 
@@ -270,6 +302,9 @@ class MemoryServer:
         # Get tool descriptions from the tool engine
         tool_descriptions = self._tool_engine.get_tool_descriptions()
 
+        # Add reasoning prompt if reasoning mode is enabled
+        reasoning_section = REASONING_PROMPT if self._reasoning_enabled else ""
+
         return f"""You are Psyche, a thoughtful AI assistant.
 
 ## Core Behavior
@@ -287,7 +322,7 @@ Respond naturally and conversationally. Most messages just need a direct respons
 For greetings, questions, discussion, or general conversation - just respond directly. Do not use tools unless the task genuinely requires them.
 
 **Memory Tools:** You have access to long-term memory. Use `recall_memory` to search for relevant past experiences or knowledge. Use `store_memory` to save important information you want to remember later. If recall returns no results, that's normal - it just means you don't have relevant memories yet. Don't apologize or give up; continue the conversation naturally.
-
+{reasoning_section}
 ## Tool Usage
 
 When you need a tool, use this format and then STOP:
@@ -306,6 +341,41 @@ When you need a tool, use this format and then STOP:
 - NEVER fabricate or imagine tool outputs - wait for the real result
 - Always read files before modifying them
 - Be careful with bash commands"""
+
+    def set_reasoning_mode(self, enabled: bool) -> None:
+        """
+        Enable or disable reasoning mode.
+
+        When enabled, the system prompt instructs the model to use <thinking>
+        tags for explicit reasoning before responses.
+
+        Args:
+            enabled: Whether to enable reasoning mode
+        """
+        self._reasoning_enabled = enabled
+        # Rebuild system prompt with updated reasoning mode
+        self._system_prompt = self._build_system_prompt()
+
+        # Update the system prompt in the compactor by replacing the first system message
+        # This works because the first message is always the system prompt
+        if self._compactor._messages:
+            for i, msg in enumerate(self._compactor._messages):
+                if msg.role == "system":
+                    # Create new system message with same timestamp but updated content
+                    new_msg = create_message("system", self._system_prompt)
+                    new_msg.timestamp = msg.timestamp
+                    # Update token count difference
+                    token_diff = new_msg.token_count - msg.token_count
+                    self._compactor._total_tokens += token_diff
+                    self._compactor._messages[i] = new_msg
+                    break
+
+        logger.debug(f"Reasoning mode: {'enabled' if enabled else 'disabled'}")
+
+    @property
+    def reasoning_enabled(self) -> bool:
+        """Check if reasoning mode is enabled."""
+        return self._reasoning_enabled
 
     @property
     def state(self) -> ServerState:
@@ -622,6 +692,9 @@ When you need a tool, use this format and then STOP:
         if compaction_result:
             await self._handle_compaction_result(compaction_result)
 
+        # Track tool results for importance scoring
+        tool_results_collected: list[dict] = []
+
         # ReAct loop - iterate until LLM provides final response without tools
         for iteration in range(self.config.max_tool_iterations):
             # Check for interrupt at the start of each iteration
@@ -723,26 +796,49 @@ When you need a tool, use this format and then STOP:
                 if compaction_result:
                     await self._handle_compaction_result(compaction_result)
 
-                # Execute the tool
-                await self._execute_parsed_tool_call(tool_call)
+                # Execute the tool and collect result for importance scoring
+                tool_result = await self._execute_parsed_tool_call(tool_call)
+                tool_results_collected.append(tool_result)
 
                 # Continue loop to get next response
                 continue
 
             # No tool call - this is the final response
-            compaction_result = self._compactor.add_message(create_message("assistant", response_text))
+            # Parse for reasoning/thinking blocks if reasoning mode is enabled
+            final_response = response_text
+            if self._reasoning_enabled:
+                from psyche.memory.reasoning import parse_reasoning
+                parsed = parse_reasoning(response_text)
+                if parsed.has_thinking and self.on_thought:
+                    # Send reasoning to thought panel
+                    self.on_thought(ThoughtEvent(
+                        content=parsed.thinking,
+                        thought_type="reasoning",
+                        triggered_by="response",
+                    ))
+                # Use the cleaned response (without thinking tags)
+                final_response = parsed.response
+
+            compaction_result = self._compactor.add_message(create_message("assistant", final_response))
             if compaction_result:
                 await self._handle_compaction_result(compaction_result)
 
             # Notify callback (tokens already streamed, this signals completion)
             if self.on_response:
-                self.on_response(response_text)
+                self.on_response(final_response)
 
             # Check for periodic checkpoint
             await self._maybe_checkpoint()
 
             # Update emotional state based on interaction
-            await self._update_emotion_for_interaction_text(response_text)
+            await self._update_emotion_for_interaction_text(final_response)
+
+            # Check for auto-storage of important exchanges
+            await self._after_response(
+                text,
+                final_response,
+                tool_results_collected if tool_results_collected else None,
+            )
             return
 
         # Max iterations reached
@@ -811,8 +907,12 @@ When you need a tool, use this format and then STOP:
 
         return None
 
-    async def _execute_parsed_tool_call(self, tool_call: Dict[str, Any]) -> None:
-        """Execute a parsed tool call and add result to context."""
+    async def _execute_parsed_tool_call(self, tool_call: Dict[str, Any]) -> dict[str, Any]:
+        """Execute a parsed tool call and add result to context.
+
+        Returns:
+            The tool result dictionary (for importance scoring), or error dict on failure
+        """
         tool_name = tool_call.get("name", "unknown")
         arguments = tool_call.get("arguments", {})
 
@@ -857,6 +957,8 @@ When you need a tool, use this format and then STOP:
             else:
                 await self.client.update_emotion("failure", intensity=0.5)
 
+            return result
+
         except Exception as e:
             logger.error(f"Tool execution failed: {e}")
 
@@ -870,6 +972,8 @@ When you need a tool, use this format and then STOP:
 
             # Trigger frustration emotion
             await self.client.update_emotion("frustration", intensity=0.5)
+
+            return {"success": False, "error": str(e), "tool": tool_name}
 
     def _can_start_idle_thinking(self) -> bool:
         """
@@ -1220,6 +1324,77 @@ You MUST use the actual tools to see real data.
             await self.client.update_emotion("engagement", intensity=0.5)
         elif content_length < 50:
             await self.client.update_emotion("boredom", intensity=0.3)
+
+    async def _after_response(
+        self,
+        user_message: str,
+        response: str,
+        tool_results: list[dict] | None = None,
+    ) -> None:
+        """
+        Called after generating a response. Handles auto-storage of important exchanges.
+
+        This method evaluates the importance of the user-assistant exchange using
+        heuristic scoring. If the exchange exceeds the configured threshold, it
+        is automatically stored to Mnemosyne for long-term memory.
+
+        Args:
+            user_message: The original user input
+            response: The assistant's response
+            tool_results: List of tool execution results (if any)
+        """
+        # Skip if auto-storage is disabled
+        if not self.config.auto_storage:
+            return
+
+        # Skip if Mnemosyne is unavailable
+        if not self.mnemosyne_client or not self.mnemosyne_client.is_connected:
+            logger.debug("Auto-storage skipped: Mnemosyne unavailable")
+            return
+
+        # Get current emotional state for scoring
+        emotion = None
+        if self.client and self.client.is_connected:
+            try:
+                emotion_state = await self.client.get_emotion()
+                emotion = {
+                    "valence": emotion_state.valence,
+                    "arousal": emotion_state.arousal,
+                } if emotion_state else None
+            except Exception:
+                pass  # Emotion unavailable, continue without it
+
+        # Calculate importance score
+        from psyche.memory.importance import calculate_importance, format_score_breakdown
+        score = calculate_importance(user_message, response, tool_results, emotion)
+
+        logger.debug(f"Importance score: {format_score_breakdown(score)}")
+
+        # Auto-store if above threshold
+        if score.total >= self.config.auto_storage_threshold:
+            try:
+                # Create memory content with context (truncated for storage)
+                # Include enough context to be useful but not too verbose
+                user_snippet = user_message[:300] + "..." if len(user_message) > 300 else user_message
+                response_snippet = response[:800] + "..." if len(response) > 800 else response
+
+                memory_content = f"User: {user_snippet}\n\nAssistant: {response_snippet}"
+
+                # Generate a brief summary
+                summary = response[:150] + "..." if len(response) > 150 else response
+
+                # Store to Mnemosyne
+                await self.mnemosyne_client.store_memory(
+                    content=memory_content,
+                    summary=summary,
+                    memory_type="episodic",
+                    emotional_context=emotion,
+                    tags=["auto-stored", "important"],
+                )
+                logger.info(f"Auto-stored exchange (importance={score.total:.2f})")
+
+            except Exception as e:
+                logger.warning(f"Failed to auto-store exchange: {e}")
 
     async def get_context_summary(self) -> Dict[str, Any]:
         """Get a summary of current context state."""
