@@ -5,7 +5,6 @@ and supports emotional modulation via activation steering.
 """
 
 import asyncio
-import queue
 import threading
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, Iterator, List, Optional
 
@@ -240,11 +239,15 @@ class TransformersInference(InferenceEngine):
         """Generate chat completion with streaming.
 
         Yields tokens as they are generated, enabling real-time display.
+        Uses a single internal thread for TextIteratorStreamer (required by
+        HuggingFace's streaming API), but avoids the redundant outer threading
+        layer that was causing issues.
         """
-        async for token in self._stream_in_thread(
+        for token in self._chat_completion_stream_sync(
             messages, max_tokens, temperature, top_p, emotion_coefficients
         ):
             yield token
+            await asyncio.sleep(0)  # Cooperative yield to event loop
 
     def _chat_completion_stream_sync(
         self,
@@ -308,47 +311,6 @@ class TransformersInference(InferenceEngine):
             yield token
 
         thread.join(timeout=1.0)
-
-    async def _stream_in_thread(
-        self,
-        messages: List[Dict[str, str]],
-        max_tokens: Optional[int],
-        temperature: Optional[float],
-        top_p: Optional[float],
-        emotion_coefficients: Optional[Dict[str, float]],
-    ) -> AsyncIterator[str]:
-        """Bridge synchronous streaming to async using a queue."""
-        token_queue: queue.Queue[Optional[str]] = queue.Queue()
-        error_holder: List[Exception] = []
-
-        def producer() -> None:
-            try:
-                for token in self._chat_completion_stream_sync(
-                    messages, max_tokens, temperature, top_p, emotion_coefficients
-                ):
-                    token_queue.put(token)
-            except Exception as e:
-                error_holder.append(e)
-            finally:
-                token_queue.put(None)
-
-        thread = threading.Thread(target=producer, daemon=True)
-        thread.start()
-
-        try:
-            while True:
-                while token_queue.empty():
-                    await asyncio.sleep(0.01)
-
-                token = token_queue.get_nowait()
-                if token is None:
-                    break
-                yield token
-        finally:
-            thread.join(timeout=1.0)
-
-        if error_holder:
-            raise error_holder[0]
 
     async def function_call(
         self,

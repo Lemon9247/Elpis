@@ -29,14 +29,12 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
-# Disable CUDA graph optimization to prevent crashes with multi-threaded access
-# llama_context is not thread-safe; streaming uses a separate thread
+# Disable CUDA graph optimization as a safety net for thread-safety
+# Note: Streaming now runs on main thread, but keeping this for stability
 # See: https://github.com/ggml-org/llama.cpp/issues/11804
 os.environ.setdefault("GGML_CUDA_DISABLE_GRAPHS", "1")
 
 import asyncio
-import queue
-import threading
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from llama_cpp import Llama
@@ -211,6 +209,8 @@ class LlamaInference(InferenceEngine):
         """Generate chat completion with streaming.
 
         Yields tokens as they are generated, enabling real-time display.
+        All operations run on the main thread to avoid thread-safety issues
+        with llama_context (which is not thread-safe).
 
         Args:
             messages: List of chat messages with role and content
@@ -224,8 +224,12 @@ class LlamaInference(InferenceEngine):
         """
         if emotion_coefficients:
             logger.debug("Emotion coefficients ignored by llama-cpp backend")
-        async for token in self._stream_in_thread(messages, max_tokens, temperature, top_p):
+
+        for token in self._chat_completion_stream_sync(
+            messages, max_tokens, temperature, top_p
+        ):
             yield token
+            await asyncio.sleep(0)  # Cooperative yield to event loop
 
     def _chat_completion_stream_sync(
         self,
@@ -254,49 +258,3 @@ class LlamaInference(InferenceEngine):
         except Exception as e:
             logger.error(f"Streaming inference error: {e}")
             raise LLMInferenceError(f"Streaming inference failed: {e}") from e
-
-    async def _stream_in_thread(
-        self,
-        messages: List[Dict[str, str]],
-        max_tokens: Optional[int],
-        temperature: Optional[float],
-        top_p: Optional[float],
-    ) -> AsyncIterator[str]:
-        """Bridge synchronous streaming to async using a queue.
-
-        Runs the sync generator in a thread and yields tokens asynchronously.
-        """
-        token_queue: queue.Queue[Optional[str]] = queue.Queue()
-        error_holder: List[Exception] = []
-
-        def producer() -> None:
-            """Thread function that generates tokens and puts them in queue."""
-            try:
-                for token in self._chat_completion_stream_sync(
-                    messages, max_tokens, temperature, top_p
-                ):
-                    token_queue.put(token)
-            except Exception as e:
-                error_holder.append(e)
-            finally:
-                token_queue.put(None)  # Sentinel to signal completion
-
-        thread = threading.Thread(target=producer, daemon=True)
-        thread.start()
-
-        try:
-            while True:
-                # Use asyncio-friendly polling to avoid blocking event loop
-                while token_queue.empty():
-                    await asyncio.sleep(0.01)
-
-                token = token_queue.get_nowait()
-                if token is None:
-                    break
-                yield token
-        finally:
-            thread.join(timeout=1.0)
-
-        # Re-raise any error from the producer thread
-        if error_holder:
-            raise error_holder[0]
