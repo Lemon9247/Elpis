@@ -123,9 +123,10 @@ class MemoryServer:
         mnemosyne_client: Optional[MnemosyneClient] = None,
         on_thought: Optional[Callable[[ThoughtEvent], None]] = None,
         on_response: Optional[Callable[[str], None]] = None,
-        on_tool_call: Optional[Callable[[str, Optional[Dict[str, Any]]], None]] = None,
+        on_tool_call: Optional[Callable[[str, Dict[str, Any], Optional[Dict[str, Any]]], None]] = None,
         on_token: Optional[Callable[[str], None]] = None,
         on_consolidation: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_thinking: Optional[Callable[[str], None]] = None,
     ):
         """
         Initialize the memory server.
@@ -136,9 +137,10 @@ class MemoryServer:
             mnemosyne_client: Optional client for Mnemosyne memory server (enables consolidation)
             on_thought: Callback for internal thoughts (for UI display)
             on_response: Callback for responses to user
-            on_tool_call: Callback when a tool is executed (name, result or None for start)
+            on_tool_call: Callback when a tool is executed (name, args, result or None for start)
             on_token: Callback for streaming tokens (for real-time display)
             on_consolidation: Callback when memory consolidation runs
+            on_thinking: Callback for streaming tokens during idle thought generation
         """
         self.client = elpis_client
         self.mnemosyne_client = mnemosyne_client
@@ -148,6 +150,7 @@ class MemoryServer:
         self.on_tool_call = on_tool_call
         self.on_token = on_token
         self.on_consolidation = on_consolidation
+        self.on_thinking = on_thinking
 
         self._state = ServerState.IDLE
         self._compactor = ContextCompactor(
@@ -177,6 +180,9 @@ class MemoryServer:
 
         # Message counter for periodic checkpoints
         self._message_count: int = 0
+
+        # Interrupt event for stopping generation mid-stream
+        self._interrupt_event: asyncio.Event = asyncio.Event()
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -310,6 +316,20 @@ When you need a tool, use this format and then STOP:
     def is_running(self) -> bool:
         """Check if server is running."""
         return self._running
+
+    def interrupt(self) -> bool:
+        """
+        Request interruption of current generation.
+
+        Returns:
+            True if interrupt was requested (server was generating),
+            False if server was not in a state that can be interrupted.
+        """
+        if self._state == ServerState.THINKING:
+            self._interrupt_event.set()
+            logger.debug("Generation interrupt requested")
+            return True
+        return False
 
     async def start(self) -> None:
         """Start the continuous inference loop."""
@@ -604,6 +624,14 @@ When you need a tool, use this format and then STOP:
 
         # ReAct loop - iterate until LLM provides final response without tools
         for iteration in range(self.config.max_tool_iterations):
+            # Check for interrupt at the start of each iteration
+            if self._interrupt_event.is_set():
+                self._interrupt_event.clear()
+                logger.info("ReAct loop interrupted by user before iteration")
+                if self.on_response:
+                    self.on_response("[Interrupted]")
+                return
+
             # Check if new user input arrived - if so, break out to process it
             if not self._input_queue.empty():
                 logger.debug("New user input detected, breaking ReAct loop")
@@ -622,6 +650,7 @@ When you need a tool, use this format and then STOP:
             self._state = ServerState.THINKING
             response_tokens: List[str] = []
 
+            interrupted = False
             try:
                 # Use async_timeout context for the entire streaming operation
                 async with asyncio.timeout(self.config.generation_timeout):
@@ -629,6 +658,13 @@ When you need a tool, use this format and then STOP:
                         messages=messages,
                         emotional_modulation=self.config.emotional_modulation,
                     ):
+                        # Check for interrupt request
+                        if self._interrupt_event.is_set():
+                            self._interrupt_event.clear()
+                            logger.info("Generation interrupted by user")
+                            interrupted = True
+                            break
+
                         response_tokens.append(token)
                         # Stream token to UI callback
                         if self.on_token:
@@ -645,6 +681,21 @@ When you need a tool, use this format and then STOP:
                     self.on_response(f"[Error: {e}]")
                 return
 
+            # Handle interrupt - show partial response with marker
+            if interrupted:
+                response_tokens.append("\n\n[Interrupted]")
+                response_text = "".join(response_tokens)
+
+                # Add partial response to context
+                compaction_result = self._compactor.add_message(create_message("assistant", response_text))
+                if compaction_result:
+                    await self._handle_compaction_result(compaction_result)
+
+                # Notify callback with interrupted response
+                if self.on_response:
+                    self.on_response(response_text)
+                return
+
             response_text = "".join(response_tokens)
 
             # Try to parse tool calls from the response
@@ -654,6 +705,14 @@ When you need a tool, use this format and then STOP:
                 # Found a tool call - execute it
                 self._state = ServerState.PROCESSING_TOOLS
                 logger.debug(f"Parsed tool call: {tool_call.get('name')}")
+
+                # Check for interrupt before tool execution
+                if self._interrupt_event.is_set():
+                    self._interrupt_event.clear()
+                    logger.info("Tool execution skipped due to interrupt")
+                    if self.on_response:
+                        self.on_response(response_text + "\n\n[Interrupted before tool execution]")
+                    return
 
                 # Signal end of this generation (so UI can end stream before tool runs)
                 if self.on_response:
@@ -761,7 +820,7 @@ When you need a tool, use this format and then STOP:
 
         # Notify callback at start (result=None indicates start)
         if self.on_tool_call:
-            self.on_tool_call(tool_name, None)
+            self.on_tool_call(tool_name, arguments, None)
 
         try:
             # Convert to the format expected by tool engine
@@ -777,7 +836,7 @@ When you need a tool, use this format and then STOP:
 
             # Notify callback at end (with result)
             if self.on_tool_call:
-                self.on_tool_call(tool_name, result)
+                self.on_tool_call(tool_name, arguments, result)
 
             # Add tool result to context (truncated to avoid context overflow)
             result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
@@ -959,19 +1018,43 @@ When you need a tool, use this format and then STOP:
                 logger.warning("Elpis client disconnected during idle thought")
                 return
 
+            # Check for interrupt before starting generation
+            if self._interrupt_event.is_set():
+                self._interrupt_event.clear()
+                logger.info("Idle thought interrupted before generation")
+                return
+
+            # Use streaming generation with interrupt support
+            response_tokens: List[str] = []
+            interrupted = False
+
             try:
-                result = await asyncio.wait_for(
-                    self.client.generate(
+                async with asyncio.timeout(self.config.generation_timeout):
+                    async for token in self.client.generate_stream(
                         messages=reflection_messages,
                         max_tokens=512,
                         temperature=self.config.think_temperature,
                         emotional_modulation=self.config.emotional_modulation,
-                    ),
-                    timeout=self.config.generation_timeout,
-                )
+                    ):
+                        # Check for interrupt request
+                        if self._interrupt_event.is_set():
+                            self._interrupt_event.clear()
+                            logger.info("Idle thought interrupted during generation")
+                            interrupted = True
+                            break
+
+                        response_tokens.append(token)
+                        # Stream token to thinking callback (for UI display)
+                        if self.on_thinking:
+                            self.on_thinking(token)
+
             except asyncio.TimeoutError:
                 logger.warning(f"Idle thought generation timed out after {self.config.generation_timeout}s")
                 return
+            except asyncio.CancelledError:
+                # Task was cancelled (e.g., user input arrived)
+                logger.debug("Idle thought generation cancelled")
+                raise
             except Exception as e:
                 error_msg = str(e) if str(e) else type(e).__name__
                 logger.error(f"Idle thought generation failed: {error_msg}")
@@ -981,7 +1064,11 @@ When you need a tool, use this format and then STOP:
                     self._connection_lost = True
                 return
 
-            response_text = result.content
+            # If interrupted, stop processing
+            if interrupted:
+                return
+
+            response_text = "".join(response_tokens)
 
             # Check for tool calls
             tool_call = self._parse_tool_call(response_text)
@@ -1039,7 +1126,7 @@ When you need a tool, use this format and then STOP:
 
                     # Notify callback
                     if self.on_tool_call:
-                        self.on_tool_call(tool_call["name"], tool_result)
+                        self.on_tool_call(tool_call["name"], tool_call.get("arguments", {}), tool_result)
 
                     # Truncate large results to avoid context overflow
                     result_str = json.dumps(tool_result, indent=2) if isinstance(tool_result, dict) else str(tool_result)
