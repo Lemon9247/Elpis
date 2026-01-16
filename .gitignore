@@ -77,3 +77,6 @@ configs/config.local.toml
 
 # Claude Code plans (user-specific)
 .claude/plans/
+
+# Private Claude context (not for GitHub)
+claude.local.md
