@@ -259,12 +259,12 @@ mypy src/elpis
 ## Roadmap
 
 - [x] Phase 1: Basic Agent Harness
-- [x] Phase 2A: Tool system fixes
-- [x] Phase 2B: MCP inference server
-- [x] Phase 2C: Emotional regulation system
-- [x] Phase 2D: Psyche harness with memory server
+- [x] Phase 2: MCP servers (inference, memory, tools, emotional regulation)
 - [x] Phase 3: Long-term memory consolidation with clustering
-- [ ] Phase 4: Advanced emotional dynamics
+- [ ] Phase 4: Stability & memory persistence fixes
+- [ ] Phase 5: UX improvements (tool display, interruption support)
+- [ ] Phase 6: Reasoning workflow & architecture refactor
+- [ ] Phase 7: External agent support (OpenAI-compatible HTTP API)
 
 ## Author and License
 
