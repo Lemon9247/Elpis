@@ -53,3 +53,28 @@ output_file = "./logs/elpis.log"
 
 # Log format: "json" or "text"
 format = "json"
+
+[memory]
+# Enable automatic memory retrieval on each user message
+enable_auto_retrieval = true
+
+# Number of memories to retrieve per query
+auto_retrieval_count = 3
+
+# Enable periodic memory checkpoints
+enable_checkpoints = true
+
+# Save checkpoint every N messages
+checkpoint_interval = 20
+
+# Enable memory consolidation
+enable_consolidation = true
+
+# Check consolidation every N seconds
+consolidation_check_interval = 300
+
+# Minimum importance score for memory promotion (0.0-1.0)
+consolidation_importance_threshold = 0.6
+
+# Similarity threshold for clustering (0.0-1.0)
+consolidation_similarity_threshold = 0.85

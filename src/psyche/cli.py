@@ -1,7 +1,10 @@
 """Command-line interface for Psyche."""
 
+import asyncio
+import signal
 import sys
 from pathlib import Path
+from typing import Optional
 
 from loguru import logger
 
@@ -60,6 +63,31 @@ def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
         )
 
 
+def _run_async_cleanup(server: MemoryServer) -> None:
+    """Run async cleanup in a new event loop.
+
+    This is called after the Textual app exits to ensure memory consolidation
+    happens regardless of how the app was terminated.
+    """
+    async def cleanup():
+        try:
+            logger.info("Running post-exit memory consolidation...")
+            await server.shutdown_with_consolidation()
+            await server.stop()
+            logger.info("Memory consolidation complete")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+
+    try:
+        # Create a new event loop for cleanup since Textual's loop is gone
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(cleanup())
+        loop.close()
+    except Exception as e:
+        logger.error(f"Failed to run async cleanup: {e}")
+
+
 def main(
     server_command: str = "elpis-server",
     mnemosyne_command: str | None = "mnemosyne-server",
@@ -112,8 +140,26 @@ def main(
         mnemosyne_client=mnemosyne_client,
     )
 
-    # Create and run Textual app
+    # Create Textual app
     app = PsycheApp(memory_server=server)
+
+    # Track if cleanup already happened (e.g., via action_quit)
+    cleanup_done = False
+
+    # Signal handler for graceful shutdown
+    def signal_handler(signum: int, frame) -> None:
+        nonlocal cleanup_done
+        sig_name = signal.Signals(signum).name
+        logger.info(f"Received {sig_name}, initiating graceful shutdown...")
+        # Request app exit - this will cause app.run() to return
+        try:
+            app.exit()
+        except Exception:
+            pass  # App may not be fully initialized
+
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    # SIGINT is handled by Textual via Ctrl+C binding
 
     # Redirect stderr to file to prevent any native library output from breaking TUI
     # This catches llama-cpp-python and other C library output that bypasses Python logging
@@ -131,6 +177,12 @@ def main(
         sys.exit(1)
     finally:
         sys.stderr = original_stderr
+
+        # Always run cleanup after app exits (regardless of how it exited)
+        # This ensures memory consolidation happens even on SIGTERM or crashes
+        if not cleanup_done:
+            _run_async_cleanup(server)
+            cleanup_done = True
 
 
 if __name__ == "__main__":

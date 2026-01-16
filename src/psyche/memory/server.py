@@ -3,12 +3,18 @@
 import asyncio
 import json
 import re
+import time as time_module
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from loguru import logger
+
+
+# Default path for local fallback storage
+FALLBACK_STORAGE_DIR = Path.home() / ".psyche" / "fallback_memories"
 
 from psyche.mcp.client import ElpisClient, GenerationResult, FunctionCallResult, MnemosyneClient
 from psyche.memory.compaction import CompactionResult, ContextCompactor, Message, create_message
@@ -89,6 +95,14 @@ class ServerConfig:
     consolidation_importance_threshold: float = 0.6  # Min importance for promotion
     consolidation_similarity_threshold: float = 0.85  # Similarity threshold for clustering
 
+    # Memory checkpoint settings (can be overridden via config file)
+    enable_checkpoints: bool = True  # Enable periodic checkpoints
+    checkpoint_interval: int = 20  # Save checkpoint every N messages
+
+    # Auto-retrieval settings
+    enable_auto_retrieval: bool = True  # Enable automatic memory retrieval
+    auto_retrieval_count: int = 3  # Number of memories to retrieve
+
 
 class MemoryServer:
     """
@@ -157,6 +171,12 @@ class MemoryServer:
         # Staged messages buffer for delayed Mnemosyne storage
         # Messages are staged for one compaction cycle before being stored
         self._staged_messages: List[Message] = []
+
+        # Flag to prevent double cleanup on shutdown
+        self._cleanup_done: bool = False
+
+        # Message counter for periodic checkpoints
+        self._message_count: int = 0
 
         # Initialize tool engine
         self._tool_engine = ToolEngine(
@@ -467,6 +487,88 @@ When you need a tool, use this format and then STOP:
 
         logger.info(f"Inference loop stopped after {loop_iteration} iterations")
 
+    async def _maybe_checkpoint(self) -> None:
+        """
+        Check if a periodic checkpoint should be saved.
+
+        Saves current context to Mnemosyne (or local fallback) every N messages
+        as configured by checkpoint_interval.
+        """
+        if not self.config.enable_checkpoints:
+            return
+
+        self._message_count += 1
+
+        if self._message_count % self.config.checkpoint_interval != 0:
+            return
+
+        logger.debug(f"Checkpoint triggered at message {self._message_count}")
+
+        # Get messages to checkpoint (exclude system prompts)
+        messages_to_save = [m for m in self._compactor.messages if m.role != "system"]
+        if not messages_to_save:
+            return
+
+        # Try Mnemosyne first, fall back to local storage
+        saved = False
+        if self.mnemosyne_client and self.mnemosyne_client.is_connected:
+            saved = await self._store_messages_to_mnemosyne(messages_to_save)
+
+        if not saved:
+            logger.debug("Checkpoint: Using local fallback storage")
+            self._save_to_local_fallback(messages_to_save, reason="checkpoint")
+
+    async def _retrieve_relevant_memories(self, query: str, n_results: Optional[int] = None) -> Optional[str]:
+        """
+        Retrieve relevant memories from Mnemosyne for a given query.
+
+        Args:
+            query: The query text (typically user input)
+            n_results: Number of memories to retrieve (uses config default if None)
+
+        Returns:
+            Formatted memory context string, or None if no relevant memories found
+        """
+        if not self.config.enable_auto_retrieval:
+            return None
+
+        if n_results is None:
+            n_results = self.config.auto_retrieval_count
+
+        if not self.mnemosyne_client or not self.mnemosyne_client.is_connected:
+            return None
+
+        try:
+            memories = await self.mnemosyne_client.recall_memory(query, n_results=n_results)
+
+            if not memories:
+                logger.debug("No relevant memories found")
+                return None
+
+            # Format memories for context injection
+            formatted = []
+            for i, memory in enumerate(memories, 1):
+                # Extract content and summary
+                content = memory.get("content", "")
+                summary = memory.get("summary", "")
+                memory_type = memory.get("memory_type", "unknown")
+
+                # Use summary if available and content is long
+                display_content = summary if summary and len(content) > 200 else content
+
+                # Truncate very long content
+                if len(display_content) > 300:
+                    display_content = display_content[:300] + "..."
+
+                formatted.append(f"{i}. [{memory_type}] {display_content}")
+
+            logger.debug(f"Retrieved {len(memories)} relevant memories")
+            return "\n".join(formatted)
+
+        except Exception as e:
+            logger.warning(f"Failed to retrieve memories: {e}")
+            return None
+
     async def _process_user_input(self, text: str) -> None:
         """Process user input with ReAct loop for tool execution."""
         import time
@@ -481,6 +583,19 @@ When you need a tool, use this format and then STOP:
 
         self._state = ServerState.THINKING
         logger.debug(f"Processing user input: {text[:50]}...")
+
+        # Retrieve relevant memories before processing
+        memory_context = await self._retrieve_relevant_memories(text)
+
+        # Add memory context if we found relevant memories
+        if memory_context:
+            memory_message = create_message(
+                "system",
+                f"[Relevant memories]\n{memory_context}"
+            )
+            compaction_result = self._compactor.add_message(memory_message)
+            if compaction_result:
+                await self._handle_compaction_result(compaction_result)
 
         # Add user message to context
         compaction_result = self._compactor.add_message(create_message("user", text))
@@ -563,6 +678,9 @@ When you need a tool, use this format and then STOP:
             # Notify callback (tokens already streamed, this signals completion)
             if self.on_response:
                 self.on_response(response_text)
+
+            # Check for periodic checkpoint
+            await self._maybe_checkpoint()
 
             # Update emotional state based on interaction
             await self._update_emotion_for_interaction_text(response_text)
@@ -1241,27 +1359,104 @@ You MUST use the actual tools to see real data.
 
         return success_count == total_count
 
+    def _save_to_local_fallback(self, messages: List[Message], reason: str = "fallback") -> bool:
+        """
+        Save messages to local JSON file as fallback when Mnemosyne is unavailable.
+
+        Creates timestamped JSON files in ~/.psyche/fallback_memories/
+
+        Args:
+            messages: List of messages to save
+            reason: Reason for fallback (for logging)
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        if not messages:
+            return True
+
+        try:
+            # Ensure fallback directory exists
+            FALLBACK_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Create timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"fallback_{timestamp}_{reason}.json"
+            filepath = FALLBACK_STORAGE_DIR / filename
+
+            # Convert messages to serializable format
+            data = {
+                "timestamp": datetime.now().isoformat(),
+                "reason": reason,
+                "message_count": len(messages),
+                "messages": [
+                    {
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": msg.timestamp,
+                        "token_count": msg.token_count,
+                        "metadata": msg.metadata,
+                    }
+                    for msg in messages
+                    if msg.role != "system"  # Skip system prompts
+                ],
+            }
+
+            # Write to file
+            filepath.write_text(json.dumps(data, indent=2))
+            logger.info(f"Saved {len(messages)} messages to local fallback: {filepath}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to save to local fallback: {e}")
+            return False
+
+    def get_pending_fallback_files(self) -> List[Path]:
+        """
+        Get list of pending fallback files that haven't been restored.
+
+        Returns:
+            List of Path objects for pending fallback files
+        """
+        if not FALLBACK_STORAGE_DIR.exists():
+            return []
+
+        return sorted(FALLBACK_STORAGE_DIR.glob("fallback_*.json"))
+
     async def _handle_compaction_result(self, result: CompactionResult) -> None:
         """
         Handle compaction result by storing staged messages and staging new ones.
 
         Implements delayed storage: messages are staged for one compaction cycle
-        before being stored to Mnemosyne short-term memory.
+        before being stored to Mnemosyne short-term memory. Falls back to local
+        storage if Mnemosyne is unavailable.
 
         Args:
             result: CompactionResult from context compaction
         """
-        # Store previously staged messages to Mnemosyne
-        if self._staged_messages and self.mnemosyne_client:
-            logger.debug(f"Storing {len(self._staged_messages)} staged messages to Mnemosyne")
-            success = await self._store_messages_to_mnemosyne(self._staged_messages)
-            if success:
-                # Only clear staged messages if storage succeeded
+        # Store previously staged messages to Mnemosyne (or local fallback)
+        if self._staged_messages:
+            staged_count = len(self._staged_messages)
+            stored = False
+
+            if self.mnemosyne_client and self.mnemosyne_client.is_connected:
+                logger.debug(f"Storing {staged_count} staged messages to Mnemosyne")
+                stored = await self._store_messages_to_mnemosyne(self._staged_messages)
+
+            if not stored:
+                # Mnemosyne unavailable or failed - use local fallback
+                logger.warning(
+                    f"Mnemosyne unavailable, saving {staged_count} messages to local fallback"
+                )
+                if self._save_to_local_fallback(self._staged_messages, reason="compaction"):
+                    stored = True
+
+            if stored:
                 self._staged_messages = []
             else:
                 logger.error(
-                    f"Failed to store {len(self._staged_messages)} staged messages, "
-                    "will retry on next compaction"
+                    f"Failed to store {staged_count} staged messages to both "
+                    "Mnemosyne and local fallback"
                 )
 
         # Stage newly dropped messages (append to any failed messages)
@@ -1275,15 +1470,34 @@ You MUST use the actual tools to see real data.
 
         Stores all staged and remaining context messages to Mnemosyne,
         generates a conversation summary, then runs consolidation before shutdown.
+        Falls back to local storage if Mnemosyne is unavailable.
         """
-        logger.info("Starting graceful shutdown with memory consolidation...")
-
-        if not self.mnemosyne_client:
-            logger.debug("No Mnemosyne client, skipping memory consolidation")
+        # Prevent double cleanup
+        if self._cleanup_done:
+            logger.debug("Cleanup already done, skipping shutdown consolidation")
             return
 
-        if not self.mnemosyne_client.is_connected:
-            logger.warning("Mnemosyne not connected, skipping shutdown consolidation")
+        self._cleanup_done = True
+        logger.info("Starting graceful shutdown with memory consolidation...")
+
+        # Gather all messages to save
+        remaining = [m for m in self._compactor.messages if m.role != "system"]
+        all_messages = self._staged_messages + remaining
+
+        # Check if Mnemosyne is available
+        mnemosyne_available = (
+            self.mnemosyne_client
+            and self.mnemosyne_client.is_connected
+        )
+
+        if not mnemosyne_available:
+            # No Mnemosyne - save to local fallback
+            if all_messages:
+                logger.warning(
+                    f"Mnemosyne unavailable, saving {len(all_messages)} messages to local fallback"
+                )
+                self._save_to_local_fallback(all_messages, reason="shutdown")
+                self._staged_messages = []
             return
 
         try:
@@ -1294,16 +1508,20 @@ You MUST use the actual tools to see real data.
                 if success:
                     self._staged_messages = []
                 else:
-                    logger.error(f"Failed to store {len(self._staged_messages)} staged messages during shutdown")
+                    # Fall back to local storage
+                    logger.warning("Failed to store staged messages to Mnemosyne, using local fallback")
+                    self._save_to_local_fallback(self._staged_messages, reason="shutdown_staged")
+                    self._staged_messages = []
 
             # Store remaining context messages (non-system)
-            remaining = [m for m in self._compactor.messages if m.role != "system"]
             if remaining:
                 logger.debug(f"Storing {len(remaining)} remaining context messages")
-                await self._store_messages_to_mnemosyne(remaining)
+                success = await self._store_messages_to_mnemosyne(remaining)
+                if not success:
+                    logger.warning("Failed to store context messages to Mnemosyne, using local fallback")
+                    self._save_to_local_fallback(remaining, reason="shutdown_context")
 
             # Generate and store conversation summary
-            all_messages = self._staged_messages + remaining
             if all_messages:
                 await self._store_conversation_summary(all_messages)
 
@@ -1327,6 +1545,10 @@ You MUST use the actual tools to see real data.
 
         except Exception as e:
             logger.error(f"Shutdown consolidation failed: {e}")
+            # Last resort - save to local fallback
+            if all_messages:
+                logger.warning("Saving messages to local fallback after consolidation failure")
+                self._save_to_local_fallback(all_messages, reason="shutdown_error")
 
     def clear_context(self) -> None:
         """Clear conversation context."""
