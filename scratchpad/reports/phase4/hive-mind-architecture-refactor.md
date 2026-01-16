@@ -22,8 +22,8 @@ Agents MUST only modify files they own. Check this table before writing.
 
 | Agent | Owned Files | Status |
 |-------|-------------|--------|
-| **Core Agent** | `src/psyche/core/server.py`, `src/psyche/core/__init__.py`, `tests/psyche/unit/test_psyche_core.py` | Pending |
-| **TUI Agent** | `src/psyche/client/react_handler.py` (impl), `src/psyche/client/idle_handler.py` (impl), `tests/psyche/unit/test_react_handler.py`, `tests/psyche/unit/test_idle_handler.py` | Pending |
+| **Core Agent** | `src/psyche/core/server.py`, `src/psyche/core/__init__.py`, `tests/psyche/unit/test_psyche_core.py` | Complete |
+| **TUI Agent** | `src/psyche/client/react_handler.py` (impl), `src/psyche/client/idle_handler.py` (impl), `tests/psyche/unit/test_react_handler.py`, `tests/psyche/unit/test_idle_handler.py` | Complete |
 
 ### Wave 3 Ownership
 
@@ -149,12 +149,111 @@ Agents MUST only modify files they own. Check this table before writing.
 ### Wave 2
 
 #### Core Agent
-- **Status:** Not started
-- **Report:** (To be filled by agent)
+- **Status:** Complete
+- **Report:**
+  - Created `src/psyche/core/server.py` (~300 lines)
+  - Created `src/psyche/core/__init__.py` (exports all core classes)
+  - Created `tests/psyche/unit/test_psyche_core.py` (35 tests, all passing)
+  - **Key classes:**
+    - `CoreConfig`: Dataclass for configuration (context, memory, reasoning, auto-storage, emotional modulation)
+    - `PsycheCore`: Memory coordination layer - the heart of the Psyche substrate
+  - **Methods implemented:**
+    - `initialize()`: Set up system prompt in context
+    - `_build_system_prompt()` / `_rebuild_system_prompt()`: System prompt management with reasoning toggle
+    - `set_tool_descriptions(descriptions)`: Add tool section to system prompt (called by agent layer)
+    - `add_user_message(content)`: Add user message with automatic memory retrieval
+    - `add_assistant_message(content, user_message, tool_results)`: Add response with importance scoring and auto-storage
+    - `add_tool_result(tool_name, result)`: Add formatted tool result to context
+    - `generate(max_tokens, temperature)`: Generate response with reasoning extraction
+    - `generate_stream(max_tokens, temperature, on_token)`: Stream tokens with callback
+    - `retrieve_memories(query, n)`: Explicitly retrieve memories
+    - `store_memory(content, importance, tags)`: Explicitly store a memory
+    - `get_emotion()` / `update_emotion(event_type, intensity)`: Emotional state management
+    - `set_reasoning_mode(enabled)`: Toggle reasoning mode and rebuild prompt
+    - `checkpoint()`: Save checkpoint if interval reached
+    - `consolidate()`: Flush staged messages
+    - `shutdown()`: Graceful shutdown with conversation summary and consolidation
+    - `clear_context()`: Clear working memory
+    - `get_api_messages()`: Get messages formatted for API calls
+    - `context_summary` property: Get context statistics
+    - `reasoning_enabled` property: Check reasoning mode
+    - `is_mnemosyne_available` property: Check Mnemosyne availability
+  - **Design decisions:**
+    1. PsycheCore coordinates ContextManager and MemoryHandler but does NOT run the ReAct loop
+    2. Tool execution is delegated to the agent/handler layer (ReactHandler)
+    3. System prompt built dynamically with optional reasoning section and tool descriptions
+    4. Auto-storage uses importance scoring from `psyche.memory.importance`
+    5. Reasoning extraction uses `parse_reasoning` from `psyche.memory.reasoning`
+    6. `_handle_compaction()` delegates to MemoryHandler for staged message management
+    7. Emotional context retrieved from Elpis for importance scoring and memory storage
+  - **Notes for TUI Agent:**
+    - PsycheCore provides `get_api_messages()` for handlers to use
+    - Call `add_user_message()` before generating response
+    - Call `add_assistant_message()` after generating response (for importance scoring)
+    - Call `add_tool_result()` after each tool execution
+    - Use `generate()` for single response, `generate_stream()` for streaming
+    - Call `shutdown()` on graceful exit for memory consolidation
 
 #### TUI Agent
-- **Status:** Not started
-- **Report:** (To be filled by agent)
+- **Status:** Complete
+- **Report:**
+  - Implemented `src/psyche/client/react_handler.py` (~540 lines)
+  - Implemented `src/psyche/client/idle_handler.py` (~720 lines)
+  - Created `tests/psyche/unit/test_react_handler.py` (26 tests, all passing)
+  - Created `tests/psyche/unit/test_idle_handler.py` (43 tests, all passing)
+
+  **ReactHandler (`react_handler.py`):**
+  - `ReactConfig`: Configuration dataclass (max_tool_iterations, max_tool_result_chars, generation_timeout, emotional_modulation, reasoning_enabled)
+  - `ToolCallResult`: Dataclass for tracking tool execution results (tool_name, arguments, result, success, error)
+  - `ReactHandler` class with methods:
+    - `__init__(elpis_client, tool_engine, compactor, config, retrieve_memories_fn)`: Constructor with DI
+    - `process_input(text, on_token, on_tool_call, on_response, on_thought)`: Main ReAct loop entry point
+    - `parse_tool_call(response_text)`: Extract tool call JSON from LLM response (supports ```tool_call blocks and raw JSON)
+    - `execute_tool(tool_call, on_tool_call)`: Execute a tool via ToolEngine and return ToolCallResult
+    - `_update_emotion_for_interaction(content)`: Update emotion based on response length
+    - `interrupt()` / `clear_interrupt()`: Interrupt handling
+    - `is_processing` property: Check if currently processing
+    - `on_compaction` callback: Optional callback for compaction results
+
+  **IdleHandler (`idle_handler.py`):**
+  - `SAFE_IDLE_TOOLS`: FrozenSet of allowed read-only tools (read_file, list_directory, search_codebase, recall_memory)
+  - `SENSITIVE_PATH_PATTERNS`: FrozenSet of blocked path patterns (.ssh, .env, credentials, secrets, .aws, etc.)
+  - `IdleConfig`: Configuration dataclass (post_interaction_delay, idle_tool_cooldown_seconds, startup_warmup_seconds, max_idle_tool_iterations, think_temperature, generation_timeout, allow_idle_tools, emotional_modulation, workspace_dir, consolidation settings)
+  - `ThoughtEvent`: Dataclass for thought events (content, thought_type, triggered_by)
+  - `IdleHandler` class with methods:
+    - `__init__(elpis_client, compactor, tool_engine, mnemosyne_client, config)`: Constructor with DI
+    - `can_start_thinking()`: Check if idle thinking can begin (post-interaction delay)
+    - `can_use_tools()`: Check rate limiting for idle tools (startup warmup + cooldown)
+    - `generate_thought(on_token, on_tool_call, on_thought)`: Main entry point for idle thinking with tool support
+    - `_parse_tool_call(text)`: Parse tool call from LLM response (private method)
+    - `get_reflection_prompt()`: Get a random reflection prompt (4 variants)
+    - `validate_tool_call(tool_call)`: Validate tool call is safe (checks tool whitelist and paths)
+    - `is_safe_path(path)`: Check path safety (blocks sensitive patterns, parent traversal, paths outside workspace)
+    - `maybe_consolidate()`: Run memory consolidation if needed (checks interval, asks Mnemosyne)
+    - `record_user_interaction()`: Reset idle timer on user input
+    - `record_tool_use()`: Update rate limiting after tool use
+    - `interrupt()` / `clear_interrupt()`: Interrupt handling
+    - `is_thinking` property: Check if generating thoughts
+
+  **Design decisions:**
+  1. Both handlers use dependency injection for testability (elpis_client, tool_engine, compactor, etc.)
+  2. ReactHandler uses ContextCompactor directly instead of ContextManager (simpler integration)
+  3. IdleHandler includes its own tool call parsing (duplicated from ReactHandler) to avoid coupling
+  4. Callbacks are passed to methods rather than constructor to allow flexible UI integration
+  5. `ThoughtEvent` defined in idle_handler.py to avoid circular imports with server.py
+  6. Safety constants (SAFE_IDLE_TOOLS, SENSITIVE_PATH_PATTERNS) are module-level frozensets
+  7. Interrupt handling is explicit via asyncio.Event
+  8. All async methods support timeout via asyncio.timeout()
+  9. Memory retrieval is optional via callback function in ReactHandler
+  10. Tool results are added to context as "user" role messages (for API compatibility)
+
+  **Notes for integration:**
+  - ReactHandler expects a ContextCompactor, not a ContextManager
+  - IdleHandler expects a ContextCompactor for getting API messages
+  - Both handlers stream tokens via on_token callback
+  - Tool execution results are notified twice: once at start (result=None), once at end (with result)
+  - ReactHandler can optionally integrate with memory retrieval via retrieve_memories_fn parameter
+  - IdleHandler manages its own timing state (_startup_time, _last_idle_tool_use, _last_user_interaction)
 
 ---
 

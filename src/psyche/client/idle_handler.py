@@ -3,29 +3,24 @@ Idle thinking handler for Psyche TUI.
 
 This module handles autonomous "dreaming" when the user is idle.
 It generates reflective thoughts and manages memory consolidation.
-
-Methods that will move from server.py (Wave 2 TUI Agent will implement):
-- _generate_idle_thought() (lines ~1104-1276) - Generate idle thoughts with tool use
-- _get_reflection_prompt() (lines ~1278-1313) - Create reflection prompts
-- _can_start_idle_thinking() (lines ~979-1001) - Check if can start
-- _can_use_idle_tools() (lines ~1003-1035) - Rate limit idle tools
-- _validate_idle_tool_call() (lines ~1078-1102) - Validate tool call
-- _is_safe_idle_path() (lines ~1037-1076) - Path security checking
-- _maybe_consolidate_memories() (lines ~1416-1477) - Memory consolidation
-
-Wave 2 TUI Agent will implement these methods.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import random
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List, Optional, Set
 
+from loguru import logger
+
 if TYPE_CHECKING:
-    from psyche.core.context_manager import ContextManager
-    from psyche.core.memory_handler import MemoryHandler
     from psyche.mcp.client import ElpisClient, MnemosyneClient
     from psyche.tools.tool_engine import ToolEngine
+
+from psyche.memory.compaction import ContextCompactor
 
 
 # Safe tools that can be used during idle thinking (read-only operations)
@@ -147,17 +142,15 @@ class IdleHandler:
     Dependencies (to be injected):
     - elpis_client: For LLM inference
     - tool_engine: For executing safe tools
-    - context_manager: For getting conversation context
-    - memory_handler: For consolidation operations
+    - compactor: For getting conversation context
     - mnemosyne_client: For memory storage/retrieval
     """
 
     def __init__(
         self,
         elpis_client: ElpisClient,
-        context_manager: ContextManager,
+        compactor: ContextCompactor,
         tool_engine: Optional[ToolEngine] = None,
-        memory_handler: Optional[MemoryHandler] = None,
         mnemosyne_client: Optional[MnemosyneClient] = None,
         config: Optional[IdleConfig] = None,
     ):
@@ -166,13 +159,29 @@ class IdleHandler:
 
         Args:
             elpis_client: Client for LLM inference
-            context_manager: Manager for conversation context
+            compactor: Context compactor for getting conversation context
             tool_engine: Optional engine for executing tools
-            memory_handler: Optional handler for memory operations
             mnemosyne_client: Optional client for Mnemosyne memory server
             config: Configuration options
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        self.client = elpis_client
+        self.compactor = compactor
+        self.tool_engine = tool_engine
+        self.mnemosyne_client = mnemosyne_client
+        self.config = config or IdleConfig()
+
+        # Timing tracking
+        self._startup_time: float = time.time()
+        self._last_idle_tool_use: float = 0.0
+        self._last_user_interaction: float = 0.0
+        self._last_consolidation_check: float = 0.0
+
+        # State tracking
+        self._is_thinking = False
+        self._interrupt_event = asyncio.Event()
+
+        # Interaction counter for consolidation triggers
+        self._interaction_count = 0
 
     def can_start_thinking(self) -> bool:
         """
@@ -185,7 +194,18 @@ class IdleHandler:
             True if enough time has passed since last user interaction,
             False otherwise
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        now = time.time()
+
+        # Check if enough time has passed since last user interaction
+        time_since_interaction = now - self._last_user_interaction
+        if time_since_interaction < self.config.post_interaction_delay:
+            logger.debug(
+                f"Idle thinking delayed: post-interaction cooldown "
+                f"({time_since_interaction:.0f}s / {self.config.post_interaction_delay:.0f}s)"
+            )
+            return False
+
+        return True
 
     def can_use_tools(self) -> bool:
         """
@@ -198,7 +218,27 @@ class IdleHandler:
         Returns:
             True if idle tools can be used, False otherwise
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        now = time.time()
+
+        # Check startup warmup period
+        time_since_startup = now - self._startup_time
+        if time_since_startup < self.config.startup_warmup_seconds:
+            logger.debug(
+                f"Idle tools disabled: startup warmup "
+                f"({time_since_startup:.0f}s / {self.config.startup_warmup_seconds:.0f}s)"
+            )
+            return False
+
+        # Check cooldown since last idle tool use
+        time_since_last_use = now - self._last_idle_tool_use
+        if time_since_last_use < self.config.idle_tool_cooldown_seconds:
+            logger.debug(
+                f"Idle tools disabled: cooldown "
+                f"({time_since_last_use:.0f}s / {self.config.idle_tool_cooldown_seconds:.0f}s)"
+            )
+            return False
+
+        return True
 
     async def generate_thought(
         self,
@@ -225,7 +265,240 @@ class IdleHandler:
         Returns:
             Generated thought text, or None if interrupted/failed
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        self._is_thinking = True
+        self._interrupt_event.clear()
+
+        try:
+            # Verify connection before attempting generation
+            if not self.client.is_connected:
+                logger.warning("Elpis client disconnected, skipping idle thought")
+                return None
+
+            # Add a prompt for reflection
+            reflection_prompt = self.get_reflection_prompt()
+            reflection_messages = self.compactor.get_api_messages() + [
+                {"role": "user", "content": reflection_prompt}
+            ]
+
+            # ReAct loop for idle reflection (with restrictions)
+            for iteration in range(self.config.max_idle_tool_iterations):
+                # Re-check connection before each iteration
+                if not self.client.is_connected:
+                    logger.warning("Elpis client disconnected during idle thought")
+                    return None
+
+                # Check for interrupt before starting generation
+                if self._interrupt_event.is_set():
+                    self._interrupt_event.clear()
+                    logger.info("Idle thought interrupted before generation")
+                    return None
+
+                # Use streaming generation with interrupt support
+                response_tokens: List[str] = []
+                interrupted = False
+
+                try:
+                    async with asyncio.timeout(self.config.generation_timeout):
+                        async for token in self.client.generate_stream(
+                            messages=reflection_messages,
+                            max_tokens=512,
+                            temperature=self.config.think_temperature,
+                            emotional_modulation=self.config.emotional_modulation,
+                        ):
+                            # Check for interrupt request
+                            if self._interrupt_event.is_set():
+                                self._interrupt_event.clear()
+                                logger.info("Idle thought interrupted during generation")
+                                interrupted = True
+                                break
+
+                            response_tokens.append(token)
+                            # Stream token to thinking callback (for UI display)
+                            if on_token:
+                                on_token(token)
+
+                except asyncio.TimeoutError:
+                    logger.warning(f"Idle thought generation timed out after {self.config.generation_timeout}s")
+                    return None
+                except asyncio.CancelledError:
+                    # Task was cancelled (e.g., user input arrived)
+                    logger.debug("Idle thought generation cancelled")
+                    raise
+                except Exception as e:
+                    error_msg = str(e) if str(e) else type(e).__name__
+                    logger.error(f"Idle thought generation failed: {error_msg}")
+                    if "Connection closed" in str(e) or "closed" in str(e).lower():
+                        logger.warning("Server connection lost during idle thinking")
+                    return None
+
+                # If interrupted, stop processing
+                if interrupted:
+                    return None
+
+                response_text = "".join(response_tokens)
+
+                # Check for tool calls
+                tool_call = self._parse_tool_call(response_text)
+
+                if tool_call and self.config.allow_idle_tools and self.tool_engine:
+                    # Check rate limiting first
+                    if not self.can_use_tools():
+                        logger.debug("Idle tool call skipped: rate limited")
+                        reflection_messages.append({
+                            "role": "assistant",
+                            "content": response_text
+                        })
+                        reflection_messages.append({
+                            "role": "user",
+                            "content": "[System] Tool use is currently rate-limited during reflection. Continue your thoughts without tools."
+                        })
+                        continue
+
+                    # Validate the tool call for idle mode
+                    error = self.validate_tool_call(tool_call)
+                    if error:
+                        logger.debug(f"Idle tool call rejected: {error}")
+                        # Add rejection to messages and continue
+                        reflection_messages.append({
+                            "role": "assistant",
+                            "content": response_text
+                        })
+                        reflection_messages.append({
+                            "role": "user",
+                            "content": f"[System] {error}. Continue your reflection without this tool."
+                        })
+                        continue
+
+                    # Execute the safe tool
+                    logger.debug(f"Idle reflection using tool: {tool_call.get('name')}")
+
+                    reflection_messages.append({
+                        "role": "assistant",
+                        "content": response_text
+                    })
+
+                    try:
+                        formatted_call = {
+                            "function": {
+                                "name": tool_call["name"],
+                                "arguments": json.dumps(tool_call.get("arguments", {})),
+                            }
+                        }
+                        tool_result = await self.tool_engine.execute_tool_call(formatted_call)
+
+                        # Update last idle tool use timestamp for rate limiting
+                        self.record_tool_use()
+
+                        # Notify callback
+                        if on_tool_call:
+                            on_tool_call(tool_call["name"], tool_call.get("arguments", {}), tool_result)
+
+                        # Truncate large results to avoid context overflow
+                        result_str = json.dumps(tool_result, indent=2) if isinstance(tool_result, dict) else str(tool_result)
+                        max_chars = self.config.max_idle_result_chars
+                        if len(result_str) > max_chars:
+                            result_str = result_str[:max_chars] + f"\n\n[... truncated, {len(result_str) - max_chars} chars omitted]"
+
+                        reflection_messages.append({
+                            "role": "user",
+                            "content": f"[Tool result for {tool_call['name']}]:\n{result_str}"
+                        })
+                    except Exception as e:
+                        logger.error(f"Idle tool execution failed: {e}")
+                        reflection_messages.append({
+                            "role": "user",
+                            "content": f"[Tool error]: {str(e)}"
+                        })
+
+                    continue
+
+                # No tool call or tools disabled - this is the final thought
+                thought = ThoughtEvent(
+                    content=response_text,
+                    thought_type="reflection",
+                    triggered_by="idle",
+                )
+
+                logger.debug(f"Idle thought: {response_text[:100]}...")
+
+                if on_thought:
+                    on_thought(thought)
+
+                # Check if memory consolidation is needed
+                await self.maybe_consolidate()
+
+                return response_text
+
+            # Max iterations reached
+            logger.debug("Max idle tool iterations reached")
+
+            # Still check consolidation even if max iterations reached
+            await self.maybe_consolidate()
+
+            return None
+
+        finally:
+            self._is_thinking = False
+
+    def _parse_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Parse a tool call from the LLM's text response.
+
+        Looks for patterns like:
+        ```tool_call
+        {"name": "tool_name", "arguments": {...}}
+        ```
+
+        Returns:
+            Parsed tool call dict or None if no tool call found
+        """
+        import re
+
+        # Look for tool_call code blocks
+        pattern = r'```tool_call\s*\n?(.*?)\n?```'
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+
+        if match:
+            try:
+                tool_json = match.group(1).strip()
+                tool_call = json.loads(tool_json)
+
+                # Validate structure
+                if "name" in tool_call and "arguments" in tool_call:
+                    return tool_call
+                elif "name" in tool_call:
+                    # Allow calls with no arguments
+                    tool_call["arguments"] = {}
+                    return tool_call
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse tool call JSON: {e}")
+
+        # Also try to find JSON object with name/arguments at the start of response
+        if text.strip().startswith('{'):
+            try:
+                # Find the JSON object
+                brace_count = 0
+                end_idx = 0
+                for i, c in enumerate(text):
+                    if c == '{':
+                        brace_count += 1
+                    elif c == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+
+                if end_idx > 0:
+                    tool_json = text[:end_idx]
+                    tool_call = json.loads(tool_json)
+                    if "name" in tool_call:
+                        if "arguments" not in tool_call:
+                            tool_call["arguments"] = {}
+                        return tool_call
+            except json.JSONDecodeError:
+                pass
+
+        return None
 
     def get_reflection_prompt(self) -> str:
         """
@@ -242,7 +515,38 @@ class IdleHandler:
         Returns:
             A reflection prompt string
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        base_instruction = """[INTERNAL REFLECTION - NOT FOR USER]
+This is your private thinking time. The user will not see this response.
+
+Think out loud as you explore. Follow this pattern:
+1. First, write your thoughts about what you want to investigate and why
+2. Then use a tool to gather information
+3. After seeing the result, reflect on what you learned before continuing
+
+To use a tool, include a tool_call block:
+```tool_call
+{"name": "tool_name", "arguments": {...}}
+```
+
+Available tools: list_directory, read_file, search_codebase
+(No bash or write access during reflection)
+
+IMPORTANT: Do NOT imagine or hallucinate file contents or command outputs.
+You MUST use the actual tools to see real data.
+
+"""
+
+        prompts = [
+            base_instruction + "What exists in this workspace? Think about what you're curious about, then explore.",
+
+            base_instruction + "What would you like to understand about this codebase? Share your reasoning as you investigate.",
+
+            base_instruction + "Reflect on the conversation so far. What could you look up that might be helpful? Think through your approach.",
+
+            base_instruction + "Explore your surroundings. What catches your interest and why?",
+        ]
+
+        return random.choice(prompts)
 
     def validate_tool_call(self, tool_call: Dict[str, Any]) -> Optional[str]:
         """
@@ -258,7 +562,21 @@ class IdleHandler:
         Returns:
             Error message if invalid, None if valid
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        tool_name = tool_call.get("name", "")
+        arguments = tool_call.get("arguments", {})
+
+        # Check if tool is in safe list
+        if tool_name not in SAFE_IDLE_TOOLS:
+            return f"Tool '{tool_name}' not allowed during idle reflection"
+
+        # Check path arguments for safety
+        path_args = ["file_path", "dir_path", "path"]
+        for arg in path_args:
+            if arg in arguments:
+                if not self.is_safe_path(arguments[arg]):
+                    return f"Path '{arguments[arg]}' not allowed during idle reflection"
+
+        return None
 
     def is_safe_path(self, path: str) -> bool:
         """
@@ -275,7 +593,34 @@ class IdleHandler:
         Returns:
             True if path is safe, False otherwise
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        # Normalize the path
+        path_lower = path.lower()
+
+        # Check for sensitive patterns
+        for pattern in SENSITIVE_PATH_PATTERNS:
+            if pattern in path_lower:
+                logger.warning(f"Blocked sensitive path in idle reflection: {path}")
+                return False
+
+        # Check for parent directory traversal
+        if ".." in path:
+            logger.warning(f"Blocked parent traversal in idle reflection: {path}")
+            return False
+
+        # Verify path is within workspace
+        try:
+            resolved = Path(path)
+            if not resolved.is_absolute():
+                resolved = (Path(self.config.workspace_dir) / path).resolve()
+            else:
+                resolved = resolved.resolve()
+
+            workspace = Path(self.config.workspace_dir).resolve()
+            resolved.relative_to(workspace)
+            return True
+        except ValueError:
+            logger.warning(f"Path escapes workspace in idle reflection: {path}")
+            return False
 
     async def maybe_consolidate(self) -> bool:
         """
@@ -289,7 +634,50 @@ class IdleHandler:
         Returns:
             True if consolidation was run, False otherwise
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        # Skip if consolidation is disabled or no mnemosyne client
+        if not self.config.enable_consolidation or not self.mnemosyne_client:
+            return False
+
+        # Check if enough time has passed since last consolidation check
+        now = time.time()
+        time_since_last_check = now - self._last_consolidation_check
+        if time_since_last_check < self.config.consolidation_check_interval:
+            return False
+
+        self._last_consolidation_check = now
+
+        try:
+            # Check if Mnemosyne is connected
+            if not self.mnemosyne_client.is_connected:
+                logger.debug("Mnemosyne not connected, skipping consolidation check")
+                return False
+
+            # Check if consolidation is recommended
+            should_consolidate, reason, short_term, long_term = await self.mnemosyne_client.should_consolidate()
+
+            if not should_consolidate:
+                logger.debug(f"Consolidation not needed: {reason}")
+                return False
+
+            logger.info(f"Starting memory consolidation: {reason}")
+
+            # Run consolidation
+            result = await self.mnemosyne_client.consolidate_memories(
+                importance_threshold=self.config.consolidation_importance_threshold,
+                similarity_threshold=self.config.consolidation_similarity_threshold,
+            )
+
+            logger.info(
+                f"Consolidation complete: promoted {result.memories_promoted}, "
+                f"archived {result.memories_archived}, "
+                f"clusters formed: {result.clusters_formed}"
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Memory consolidation failed: {e}")
+            return False
 
     def record_user_interaction(self) -> None:
         """
@@ -297,7 +685,8 @@ class IdleHandler:
 
         Called when user submits input to reset the idle timer.
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        self._last_user_interaction = time.time()
+        self._interaction_count += 1
 
     def record_tool_use(self) -> None:
         """
@@ -305,7 +694,7 @@ class IdleHandler:
 
         Called after successful idle tool execution to update rate limiting.
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        self._last_idle_tool_use = time.time()
 
     def interrupt(self) -> bool:
         """
@@ -314,13 +703,17 @@ class IdleHandler:
         Returns:
             True if interrupt was requested, False otherwise
         """
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        if self._is_thinking:
+            self._interrupt_event.set()
+            logger.debug("Idle thought interrupt requested")
+            return True
+        return False
 
     def clear_interrupt(self) -> None:
         """Clear the interrupt flag after handling."""
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        self._interrupt_event.clear()
 
     @property
     def is_thinking(self) -> bool:
         """Check if currently generating idle thoughts."""
-        raise NotImplementedError("Wave 2 TUI Agent will implement")
+        return self._is_thinking
