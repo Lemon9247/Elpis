@@ -1,6 +1,7 @@
 """Psyche TUI Application built with Textual."""
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -19,7 +20,8 @@ from psyche.client.widgets import (
     EmotionalStateDisplay,
 )
 from psyche.client.widgets.sidebar import StatusDisplay
-from psyche.memory.server import MemoryServer, ThoughtEvent
+from psyche.client.commands import get_command, format_help_text, format_shortcut_help, format_startup_hint
+from psyche.memory.server import MemoryServer, ServerState, ThoughtEvent
 
 
 class PsycheApp(App):
@@ -36,11 +38,15 @@ class PsycheApp(App):
     CSS_PATH = "app.tcss"
 
     BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit"),
+        Binding("ctrl+c", "interrupt_or_quit", "Stop/Quit"),
+        Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("ctrl+l", "clear", "Clear"),
         Binding("ctrl+t", "toggle_thoughts", "Thoughts"),
         Binding("escape", "focus_input", "Focus Input", show=False),
     ]
+
+    # Double-tap threshold for Ctrl+C quit when idle (seconds)
+    DOUBLE_TAP_THRESHOLD = 1.5
 
     def __init__(self, memory_server: MemoryServer, *args, **kwargs):
         """
@@ -53,11 +59,15 @@ class PsycheApp(App):
         self.memory_server = memory_server
         self._server_task: Optional[asyncio.Task] = None
 
+        # Tracking for double-tap Ctrl+C to quit
+        self._last_ctrl_c: float = 0.0
+
         # Register callbacks
         self.memory_server.on_token = self._on_token
         self.memory_server.on_thought = self._on_thought
         self.memory_server.on_response = self._on_response
         self.memory_server.on_tool_call = self._on_tool_call
+        self.memory_server.on_thinking = self._on_thinking
 
     def compose(self) -> ComposeResult:
         """Compose the app layout."""
@@ -77,6 +87,10 @@ class PsycheApp(App):
         """Start memory server when app mounts."""
         # Focus the input
         self.query_one("#input", UserInput).focus()
+
+        # Show startup hint
+        chat = self.query_one("#chat", ChatView)
+        chat.add_system_message(format_startup_hint())
 
         # Small delay to let Textual fully initialize before spawning subprocesses
         # This helps avoid race conditions with event loop setup
@@ -153,16 +167,27 @@ class PsycheApp(App):
                 pass  # Widget may not exist during shutdown
         self.call_later(update)
 
-    def _on_tool_call(self, name: str, result: Optional[Dict[str, Any]]) -> None:
+    def _on_tool_call(self, name: str, args: Dict[str, Any], result: Optional[Dict[str, Any]]) -> None:
         """Handle tool execution callback."""
         # Use call_later to safely schedule widget update on Textual's event loop
         def update():
             try:
                 tool_widget = self.query_one("#tool-activity", ToolActivity)
                 if result is None:
-                    tool_widget.add_tool_start(name)
+                    tool_widget.add_tool_start(name, args)
                 else:
                     tool_widget.update_tool_complete(name, result)
+            except Exception:
+                pass  # Widget may not exist during shutdown
+        self.call_later(update)
+
+    def _on_thinking(self, token: str) -> None:
+        """Handle streaming token during idle thought generation."""
+        # Use call_later to safely schedule widget update on Textual's event loop
+        def update():
+            try:
+                thoughts = self.query_one("#thoughts", ThoughtPanel)
+                thoughts.on_thinking_token(token)
             except Exception:
                 pass  # Widget may not exist during shutdown
         self.call_later(update)
@@ -212,48 +237,59 @@ class PsycheApp(App):
 
     async def _handle_command(self, command: str) -> None:
         """Handle slash commands."""
-        cmd = command.lower().strip()
+        cmd_text = command.lower().strip()
         chat = self.query_one("#chat", ChatView)
 
-        if cmd == "/help":
+        # Remove leading slash and extract command name + args
+        if cmd_text.startswith("/"):
+            cmd_text = cmd_text[1:]
+        parts = cmd_text.split(maxsplit=1)
+        cmd_name = parts[0] if parts else ""
+        cmd_args = parts[1] if len(parts) > 1 else ""
+
+        # Look up command by name or alias
+        cmd = get_command(cmd_name)
+
+        if cmd is None:
+            chat.add_system_message(f"Unknown command: {command}")
+            return
+
+        # Execute the command based on its canonical name
+        if cmd.name == "help":
             self._show_help()
-        elif cmd == "/status":
+        elif cmd.name == "status":
             status = await self.memory_server.get_context_summary()
             chat.add_system_message(
                 f"State: {status.get('state', 'unknown')}, "
                 f"Messages: {status.get('message_count', 0)}, "
                 f"Tokens: {status.get('total_tokens', 0)}/{status.get('available_tokens', 0)}"
             )
-        elif cmd == "/clear":
+        elif cmd.name == "clear":
             self.memory_server.clear_context()
             chat.clear()
             chat.add_system_message("Context cleared")
-        elif cmd in ("/quit", "/exit", "/q"):
+        elif cmd.name == "quit":
             self.exit()
-        elif cmd == "/thoughts" or cmd == "/thoughts toggle":
-            self.action_toggle_thoughts()
-        elif cmd == "/thoughts on":
-            self.query_one("#thoughts", ThoughtPanel).show()
-        elif cmd == "/thoughts off":
-            self.query_one("#thoughts", ThoughtPanel).hide()
-        elif cmd == "/emotion":
+        elif cmd.name == "thoughts":
+            # Handle subcommands
+            if cmd_args == "on":
+                self.query_one("#thoughts", ThoughtPanel).show()
+            elif cmd_args == "off":
+                self.query_one("#thoughts", ThoughtPanel).hide()
+            else:
+                self.action_toggle_thoughts()
+        elif cmd.name == "emotion":
             emotion = await self.memory_server.client.get_emotion()
             chat.add_system_message(
                 f"Emotional state: {emotion.quadrant} "
                 f"(v={emotion.valence:.2f}, a={emotion.arousal:.2f})"
             )
-        else:
-            chat.add_system_message(f"Unknown command: {command}")
 
     def _show_help(self) -> None:
         """Show help information in chat."""
         chat = self.query_one("#chat", ChatView)
-        chat.add_system_message(
-            "Commands: /help, /status, /clear, /emotion, /thoughts [on|off], /quit"
-        )
-        chat.add_system_message(
-            "Shortcuts: Ctrl+C (quit), Ctrl+L (clear), Ctrl+T (toggle thoughts)"
-        )
+        chat.add_system_message(format_help_text())
+        chat.add_system_message(format_shortcut_help())
 
     def action_toggle_thoughts(self) -> None:
         """Toggle thought panel visibility."""
@@ -270,6 +306,34 @@ class PsycheApp(App):
     def action_focus_input(self) -> None:
         """Focus the input widget."""
         self.query_one("#input", UserInput).focus()
+
+    async def action_interrupt_or_quit(self) -> None:
+        """
+        Handle Ctrl+C: interrupt generation if running, or quit on double-tap when idle.
+
+        Behavior:
+        - If generating: interrupt and show "[Interrupted]"
+        - If idle (first tap): show "Press again to quit"
+        - If idle (second tap within threshold): quit
+        """
+        now = time.time()
+
+        # If the server is generating, interrupt it
+        if self.memory_server.state == ServerState.THINKING:
+            interrupted = self.memory_server.interrupt()
+            if interrupted:
+                self.notify("Generation interrupted", severity="warning")
+            return
+
+        # Not generating - implement double-tap to quit
+        time_since_last = now - self._last_ctrl_c
+        if time_since_last < self.DOUBLE_TAP_THRESHOLD:
+            # Double-tap detected - quit
+            await self.action_quit()
+        else:
+            # First tap - show message and record time
+            self._last_ctrl_c = now
+            self.notify("Press Ctrl+C again to quit, or Ctrl+Q", severity="information")
 
     async def action_quit(self) -> None:
         """Quit the application with graceful memory consolidation."""

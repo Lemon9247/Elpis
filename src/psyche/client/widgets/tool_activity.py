@@ -1,10 +1,12 @@
 """Tool activity widget for displaying tool execution status."""
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from textual.widgets import Static
 from textual.reactive import reactive
+
+from psyche.client.formatters.tool_formatter import ToolDisplayFormatter
 
 
 @dataclass
@@ -12,8 +14,9 @@ class ToolExecution:
     """Represents a single tool execution."""
 
     name: str
+    args: Dict[str, Any] = field(default_factory=dict)
     status: str = "running"  # "running", "complete", "error"
-    result_preview: str = ""
+    result: Optional[Dict[str, Any]] = None
 
 
 class ToolActivity(Static):
@@ -27,17 +30,22 @@ class ToolActivity(Static):
         self.border_title = "Tools"
         self._tool_list: list[ToolExecution] = []
 
-    def add_tool_start(self, name: str) -> None:
+    def add_tool_start(self, name: str, args: Optional[Dict[str, Any]] = None) -> None:
         """
         Record tool execution start.
 
         Args:
             name: Name of the tool being executed
+            args: Arguments passed to the tool
         """
-        self._tool_list.append(ToolExecution(name=name, status="running"))
+        self._tool_list.append(ToolExecution(
+            name=name,
+            args=args or {},
+            status="running"
+        ))
         self._render_tools()
 
-    def update_tool_complete(self, name: str, result: Optional[dict]) -> None:
+    def update_tool_complete(self, name: str, result: Optional[Dict[str, Any]]) -> None:
         """
         Update tool status to complete.
 
@@ -54,7 +62,7 @@ class ToolActivity(Static):
                     tool.status = "complete"
                 else:
                     tool.status = "error"
-                tool.result_preview = str(result.get("result", ""))[:30] if result else ""
+                tool.result = result
                 break
         self._render_tools()
 
@@ -68,7 +76,14 @@ class ToolActivity(Static):
                 "complete": "[green]OK[/]",
                 "error": "[red]!![/]",
             }.get(tool.status, "?")
-            lines.append(f"{icon} {tool.name}")
+            # Format display text using the formatter
+            display_text = ToolDisplayFormatter.format_full(
+                tool.name,
+                tool.args,
+                tool.result,
+                tool.status
+            )
+            lines.append(f"{icon} {display_text}")
 
         self.update("\n".join(lines) or "[dim]No recent tools[/]")
 
@@ -84,7 +99,14 @@ class ToolActivity(Static):
                 "complete": "[green]OK[/]",
                 "error": "[red]!![/]",
             }.get(tool.status, "?")
-            lines.append(f"{icon} {tool.name}")
+            # Format display text using the formatter
+            display_text = ToolDisplayFormatter.format_full(
+                tool.name,
+                tool.args,
+                tool.result,
+                tool.status
+            )
+            lines.append(f"{icon} {display_text}")
 
         return "\n".join(lines)
 
