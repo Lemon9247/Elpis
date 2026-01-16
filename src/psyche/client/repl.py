@@ -204,6 +204,8 @@ class PsycheREPL:
             return True
 
         elif cmd in ("/quit", "/exit", "/q"):
+            self.display.print_info("Shutting down and consolidating memories...")
+            await self.server.shutdown_with_consolidation()
             await self.server.stop()
             return True
 

@@ -269,7 +269,7 @@ class PsycheApp(App):
             chat.clear()
             chat.add_system_message("Context cleared")
         elif cmd.name == "quit":
-            self.exit()
+            await self.action_quit()
         elif cmd.name == "thoughts":
             # Handle subcommands
             if cmd_args == "on":
@@ -337,8 +337,19 @@ class PsycheApp(App):
 
     async def action_quit(self) -> None:
         """Quit the application with graceful memory consolidation."""
+        # Show visual feedback
+        self.notify("Shutting down...", severity="information", timeout=10)
+        try:
+            chat = self.query_one("#chat", ChatView)
+            chat.add_system_message("Consolidating memories and shutting down...")
+        except Exception:
+            pass  # Widget may not exist
+
         # Store context and consolidate memories before shutdown
         await self.memory_server.shutdown_with_consolidation()
+
+        self.notify("Memories saved. Goodbye!", severity="information", timeout=2)
+
         await self.memory_server.stop()
         if self._server_task and not self._server_task.done():
             self._server_task.cancel()

@@ -559,7 +559,7 @@ When you need a tool, use this format and then STOP:
             return None
 
         try:
-            memories = await self.mnemosyne_client.recall_memory(query, n_results=n_results)
+            memories = await self.mnemosyne_client.search_memories(query, n_results=n_results)
 
             if not memories:
                 logger.debug("No relevant memories found")
@@ -1422,24 +1422,30 @@ You MUST use the actual tools to see real data.
 
             total_count += 1
             try:
-                # Get current emotional context
-                emotion = await self.client.get_emotion()
+                # Get current emotional context if Elpis is available
+                emotional_context = None
+                if self.client and self.client.is_connected:
+                    try:
+                        emotion = await self.client.get_emotion()
+                        emotional_context = {
+                            "valence": emotion.valence,
+                            "arousal": emotion.arousal,
+                            "quadrant": emotion.quadrant,
+                        }
+                    except Exception:
+                        pass  # Elpis unavailable, store without emotional context
 
                 await self.mnemosyne_client.store_memory(
                     content=msg.content,
                     summary=msg.content[:100],
                     memory_type="episodic",
                     tags=["compacted", msg.role],
-                    emotional_context={
-                        "valence": emotion.valence,
-                        "arousal": emotion.arousal,
-                        "quadrant": emotion.quadrant,
-                    },
+                    emotional_context=emotional_context,
                 )
                 success_count += 1
                 logger.debug(f"Stored {msg.role} message to Mnemosyne")
             except Exception as e:
-                logger.error(f"Failed to store message to Mnemosyne: {e}")
+                logger.error(f"Failed to store message to Mnemosyne: {type(e).__name__}: {e}")
 
         if total_count == 0:
             return True  # No messages to store is a success
