@@ -35,6 +35,7 @@ class ToolSettings:
     bash_timeout: int = 30
     max_file_size: int = 1_000_000
     allowed_extensions: Optional[List[str]] = None
+    tool_timeout: float = 60.0  # Default timeout for tool execution in seconds
 
 
 class ToolEngine:
@@ -261,17 +262,21 @@ class ToolEngine:
 
         return "\n\n".join(descriptions)
 
-    async def execute_tool_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_tool_call(
+        self, tool_call: Dict[str, Any], timeout: Optional[float] = None
+    ) -> Dict[str, Any]:
         """
         Execute a single tool call from LLM.
 
         Args:
             tool_call: Tool call dictionary from LLM with function name and arguments
+            timeout: Optional timeout in seconds (uses settings.tool_timeout if not provided)
 
         Returns:
             Dictionary with tool execution results
         """
         start_time = time.time()
+        effective_timeout = timeout if timeout is not None else self.settings.tool_timeout
 
         try:
             # Extract tool name and arguments
@@ -297,10 +302,21 @@ class ToolEngine:
             # Validate arguments with Pydantic model
             validated_args = tool_def.input_model(**args)
 
-            logger.debug(f"Executing tool: {tool_name} with args: {args}")
+            logger.debug(f"Executing tool: {tool_name} with args: {args} (timeout: {effective_timeout}s)")
 
-            # Execute tool (async)
-            result = await tool_def.handler(**validated_args.model_dump())
+            # Execute tool (async) with timeout
+            try:
+                async with asyncio.timeout(effective_timeout):
+                    result = await tool_def.handler(**validated_args.model_dump())
+            except asyncio.TimeoutError:
+                duration_ms = (time.time() - start_time) * 1000
+                logger.warning(f"Tool {tool_name} timed out after {effective_timeout}s")
+                return {
+                    "tool_call_id": tool_call.get("id"),
+                    "success": False,
+                    "result": {"success": False, "error": f"Timed out after {effective_timeout}s"},
+                    "duration_ms": duration_ms,
+                }
 
             duration_ms = (time.time() - start_time) * 1000
             logger.info(f"Tool {tool_name} executed in {duration_ms:.2f}ms")
