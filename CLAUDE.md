@@ -33,6 +33,8 @@ Elpis/
 ├── data/                       # Data files (models, vectors)
 ├── scratchpad/                 # Working notes and session logs
 │   ├── reports/                # Session reports
+│   ├── plans/                  # Work plans and architecture documents
+│   ├── ideas/                  # Feature ideas and improvement proposals
 │   └── archive/                # Historical docs
 ├── pyproject.toml              # Package configuration
 ├── README.md                   # Project documentation
@@ -57,7 +59,26 @@ Elpis/
 
 2) When Claude first starts, it should review the latest work on the project by reviewing the git history and anything recent in the scratchpad
 
-3) When Claude is finished working on a long task, it should write a report on its work into a new timestamped markdown file in the scratchpad/reports folder
+3) When Claude is finished working on a long task, it should write a report on its work into a new timestamped markdown file in the scratchpad/reports folder. Session logs should be named `YYYY-MM-DD-HHMM-<topic>.md` or `session-YYYY-MM-DD-<topic>.md`. Multi-agent tasks get subfolders in `reports/` with a `hive-mind-*.md` coordination file
+
+4) When creating workplans or estimating effort, use **session-based estimates** instead of human hours:
+   - A "session" is one Claude Code context window (~15-30 minutes of human interaction)
+   - Each session should be a coherent, testable unit of work
+   - One session can typically complete 1-3 focused tasks depending on complexity
+   - Complex tasks that span multiple files = 1 session
+   - Simple bug fixes or small features = can batch 2-3 per session
+   - Research/exploration = 1 session yields understanding, not necessarily code
+
+5) Session estimation guidelines:
+   | Task Type | Sessions | Examples |
+   |-----------|----------|----------|
+   | Quick fix | 0.5 | Typo, small bug, config change |
+   | Focused task | 1 | Implement single feature, fix complex bug |
+   | Multi-file change | 1-2 | Refactor module, add feature with tests |
+   | Major feature | 2-4 | New subsystem, significant architecture change |
+   | Large refactor | 4-8 | Split monolith, add abstraction layer |
+
+6) Never estimate in human time (days, weeks, hours). Context windows don't map linearly to human schedules.
 
 
 # Programming Tasks
@@ -73,7 +94,7 @@ Elpis/
 
 # Subagents
 
-1) When using multiple sub-agents for a task, Claude should create a new subfolder in the scratchpad folder.
+1) When using multiple sub-agents for a task, Claude should create a new subfolder in the scratchpad/reports folder.
 
 2) Each subagent should be given a name based on their role, e.g. Testing Agent, Coding Agent
 
