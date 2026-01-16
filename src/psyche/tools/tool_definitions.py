@@ -180,11 +180,6 @@ class StoreMemoryInput(ToolInput):
         default=None,
         description="Optional tags to categorize the memory"
     )
-    # Accept emotional_context from LLM but ignore it - implementation auto-fetches current state
-    emotional_context: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Emotional context (ignored - auto-populated from current state)"
-    )
 
     @field_validator('content')
     @classmethod
