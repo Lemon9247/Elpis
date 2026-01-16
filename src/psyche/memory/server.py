@@ -1,9 +1,22 @@
-"""Memory server with continuous inference loop."""
+"""Memory server with continuous inference loop.
+
+DEPRECATED: This module is deprecated and will be removed in a future release.
+Use the new modular architecture instead:
+- psyche.core.server.PsycheCore - Memory coordination layer
+- psyche.core.context_manager.ContextManager - Context management
+- psyche.core.memory_handler.MemoryHandler - Memory handling
+- psyche.client.react_handler.ReactHandler - ReAct loop handling
+- psyche.client.idle_handler.IdleHandler - Idle thinking
+
+The types ThoughtEvent, ServerState, and ServerConfig are re-exported from
+psyche.memory.types for backward compatibility.
+"""
 
 import asyncio
 import json
 import re
 import time as time_module
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -143,6 +156,12 @@ class MemoryServer:
     2. Generates reflections and plans when idle
     3. Manages memory through context compaction
     4. Modulates behavior based on emotional state
+
+    DEPRECATED: This class is deprecated and will be removed in a future release.
+    Use the new modular architecture instead:
+    - psyche.core.server.PsycheCore - Memory coordination layer
+    - psyche.client.react_handler.ReactHandler - ReAct loop handling
+    - psyche.client.idle_handler.IdleHandler - Idle thinking
     """
 
     def __init__(
@@ -170,7 +189,16 @@ class MemoryServer:
             on_token: Callback for streaming tokens (for real-time display)
             on_consolidation: Callback when memory consolidation runs
             on_thinking: Callback for streaming tokens during idle thought generation
+
+        .. deprecated::
+            Use psyche.core.server.PsycheCore instead.
         """
+        warnings.warn(
+            "MemoryServer is deprecated. Use psyche.core.server.PsycheCore instead. "
+            "See psyche.core for the new modular architecture.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.client = elpis_client
         self.mnemosyne_client = mnemosyne_client
         self.config = config or ServerConfig()
@@ -584,6 +612,8 @@ When you need a tool, use this format and then STOP:
 
         Saves current context to Mnemosyne (or local fallback) every N messages
         as configured by checkpoint_interval.
+
+        TODO: Remove after migration to psyche.core - see ContextManager.should_checkpoint()
         """
         if not self.config.enable_checkpoints:
             return
@@ -619,6 +649,8 @@ When you need a tool, use this format and then STOP:
 
         Returns:
             Formatted memory context string, or None if no relevant memories found
+
+        TODO: Remove after migration - see MemoryHandler.retrieve_relevant() and format_memories_for_context()
         """
         if not self.config.enable_auto_retrieval:
             return None
@@ -661,7 +693,10 @@ When you need a tool, use this format and then STOP:
             return None
 
     async def _process_user_input(self, text: str) -> None:
-        """Process user input with ReAct loop for tool execution."""
+        """Process user input with ReAct loop for tool execution.
+
+        TODO: Remove after migration - see ReactHandler.process_input()
+        """
         import time
         self._last_user_interaction = time.time()  # Track interaction time
 
@@ -1102,7 +1137,10 @@ When you need a tool, use this format and then STOP:
         return None
 
     async def _generate_idle_thought(self) -> None:
-        """Generate an idle thought during quiet periods with optional tool use."""
+        """Generate an idle thought during quiet periods with optional tool use.
+
+        TODO: Remove after migration - see IdleHandler.generate_thought()
+        """
         self._state = ServerState.THINKING
 
         # Verify connection before attempting generation
@@ -1485,6 +1523,8 @@ You MUST use the actual tools to see real data.
 
         Returns:
             Summary string, or empty string on failure
+
+        TODO: Remove after migration - see MemoryHandler.summarize_conversation()
         """
         if not messages:
             return ""
@@ -1540,6 +1580,8 @@ You MUST use the actual tools to see real data.
 
         Returns:
             True if summary stored successfully, False otherwise
+
+        TODO: Remove after migration - see MemoryHandler.store_conversation_summary()
         """
         if not self.mnemosyne_client or not self.mnemosyne_client.is_connected:
             return False
