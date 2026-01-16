@@ -42,6 +42,7 @@ class PsycheApp(App):
         Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("ctrl+l", "clear", "Clear"),
         Binding("ctrl+t", "toggle_thoughts", "Thoughts"),
+        Binding("ctrl+r", "toggle_reasoning", "Reasoning", show=False),
         Binding("escape", "focus_input", "Focus Input", show=False),
     ]
 
@@ -284,6 +285,20 @@ class PsycheApp(App):
                 f"Emotional state: {emotion.quadrant} "
                 f"(v={emotion.valence:.2f}, a={emotion.arousal:.2f})"
             )
+        elif cmd.name == "thinking":
+            # Toggle or set reasoning mode
+            if cmd_args.lower() in ("on", "true", "1"):
+                self.memory_server.set_reasoning_mode(True)
+                chat.add_system_message("[dim]Reasoning display enabled[/]")
+            elif cmd_args.lower() in ("off", "false", "0"):
+                self.memory_server.set_reasoning_mode(False)
+                chat.add_system_message("[dim]Reasoning display disabled[/]")
+            else:
+                # Toggle current state
+                new_state = not self.memory_server.reasoning_enabled
+                self.memory_server.set_reasoning_mode(new_state)
+                status = "enabled" if new_state else "disabled"
+                chat.add_system_message(f"[dim]Reasoning display {status}[/]")
 
     def _show_help(self) -> None:
         """Show help information in chat."""
@@ -295,6 +310,11 @@ class PsycheApp(App):
         """Toggle thought panel visibility."""
         thoughts = self.query_one("#thoughts", ThoughtPanel)
         thoughts.toggle()
+
+    def action_toggle_reasoning(self) -> None:
+        """Toggle reasoning display mode."""
+        # Use the command handler for consistency
+        asyncio.create_task(self._handle_command("/thinking"))
 
     def action_clear(self) -> None:
         """Clear chat and context."""

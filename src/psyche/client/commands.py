@@ -22,6 +22,7 @@ COMMANDS: Dict[str, Command] = {
     "status": Command("status", ["s"], "Show server status", None),
     "thoughts": Command("thoughts", ["t"], "Toggle thought panel visibility", "Ctrl+T"),
     "emotion": Command("emotion", ["e"], "Show current emotional state", None),
+    "thinking": Command("thinking", ["r", "reason"], "Toggle reasoning display (on/off)", "Ctrl+R"),
 }
 
 
