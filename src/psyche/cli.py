@@ -31,8 +31,15 @@ apply_mcp_patch()
 
 # Now safe to import modules that may use logging
 from psyche.client.app import PsycheApp
+from psyche.client.psyche_client import LocalPsycheClient
+from psyche.client.react_handler import ReactHandler, ReactConfig
+from psyche.client.idle_handler import IdleHandler, IdleConfig
+from psyche.core import PsycheCore, CoreConfig, ContextConfig, MemoryHandlerConfig
 from psyche.mcp.client import ElpisClient, MnemosyneClient
-from psyche.memory.server import MemoryServer, ServerConfig
+from psyche.tools import ToolEngine
+from psyche.tools.tool_engine import ToolSettings
+from psyche.tools.tool_definitions import ToolDefinition
+from psyche.tools.implementations.memory_tools import MemoryTools
 
 
 def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
@@ -63,7 +70,7 @@ def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
         )
 
 
-def _run_async_cleanup(server: MemoryServer) -> None:
+def _run_async_cleanup(core: PsycheCore) -> None:
     """Run async cleanup in a new event loop.
 
     This is called after the Textual app exits to ensure memory consolidation
@@ -72,8 +79,7 @@ def _run_async_cleanup(server: MemoryServer) -> None:
     async def cleanup():
         try:
             logger.info("Running post-exit memory consolidation...")
-            await server.shutdown_with_consolidation()
-            await server.stop()
+            await core.shutdown()
             logger.info("Memory consolidation complete")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
@@ -86,6 +92,74 @@ def _run_async_cleanup(server: MemoryServer) -> None:
         loop.close()
     except Exception as e:
         logger.error(f"Failed to run async cleanup: {e}")
+
+
+def _register_memory_tools(
+    tool_engine: ToolEngine,
+    mnemosyne_client: MnemosyneClient,
+    elpis_client: ElpisClient,
+) -> None:
+    """Register memory tools with the tool engine."""
+    memory_tools = MemoryTools(
+        mnemosyne_client=mnemosyne_client,
+        get_emotion_fn=elpis_client.get_emotion,
+    )
+
+    # Register recall_memory tool
+    tool_engine.register_tool(ToolDefinition(
+        name="recall_memory",
+        description="Search and recall memories from long-term storage. Use this to remember past conversations, facts, or experiences.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query to find relevant memories",
+                },
+                "n_results": {
+                    "type": "integer",
+                    "description": "Number of memories to retrieve (default: 5)",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+        handler=memory_tools.recall_memory,
+    ))
+
+    # Register store_memory tool
+    tool_engine.register_tool(ToolDefinition(
+        name="store_memory",
+        description="Store a new memory for future recall. Use this to save important facts, decisions, or experiences.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Content of the memory to store",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Brief summary of the memory (optional, auto-generated if not provided)",
+                },
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["episodic", "semantic", "procedural", "emotional"],
+                    "description": "Type of memory (default: episodic)",
+                    "default": "episodic",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags to categorize the memory",
+                },
+            },
+            "required": ["content"],
+        },
+        handler=memory_tools.store_memory,
+    ))
+
+    logger.info("Memory tools registered: recall_memory, store_memory")
 
 
 def main(
@@ -115,33 +189,104 @@ def main(
 
     setup_logging(debug, log_file)
 
-    # Create client for Elpis connection
-    client = ElpisClient(server_command=server_command)
+    # --- Create MCP clients ---
+    elpis_client = ElpisClient(server_command=server_command)
 
-    # Create client for Mnemosyne connection (optional)
     mnemosyne_client = None
     if mnemosyne_command and enable_consolidation:
         mnemosyne_client = MnemosyneClient(server_command=mnemosyne_command)
         logger.info(f"Mnemosyne client configured: {mnemosyne_command}")
 
-    # Configure server
-    server_config = ServerConfig(
-        idle_think_interval=30.0,
+    # --- Create PsycheCore (memory coordination layer) ---
+    core_config = CoreConfig(
+        context=ContextConfig(
+            max_context_tokens=24000,
+            reserve_tokens=4000,
+            checkpoint_interval=20,
+        ),
+        memory=MemoryHandlerConfig(
+            auto_retrieve=True,
+            auto_store=True,
+            storage_threshold=0.6,
+        ),
+        reasoning_enabled=True,
+        emotional_modulation=True,
+    )
+
+    core = PsycheCore(
+        elpis_client=elpis_client,
+        mnemosyne_client=mnemosyne_client,
+        config=core_config,
+    )
+
+    # --- Create ToolEngine ---
+    tool_engine = ToolEngine(
+        workspace_dir=workspace,
+        settings=ToolSettings(),
+    )
+
+    # Register memory tools if Mnemosyne is available
+    if mnemosyne_client:
+        _register_memory_tools(tool_engine, mnemosyne_client, elpis_client)
+
+    # --- Set tool descriptions in core ---
+    tool_descriptions = tool_engine.get_tool_descriptions()
+    core.set_tool_descriptions(tool_descriptions)
+    core.initialize()
+
+    # --- Create handlers ---
+    # Get the shared compactor from core's context manager
+    compactor = core._context.compactor
+
+    react_config = ReactConfig(
+        max_tool_iterations=10,
+        max_tool_result_chars=16000,
+        generation_timeout=120.0,
+        emotional_modulation=True,
+        reasoning_enabled=True,
+    )
+
+    react_handler = ReactHandler(
+        elpis_client=elpis_client,
+        tool_engine=tool_engine,
+        compactor=compactor,
+        config=react_config,
+        retrieve_memories_fn=core.retrieve_memories,
+    )
+
+    idle_config = IdleConfig(
+        post_interaction_delay=30.0,
+        idle_tool_cooldown_seconds=60.0,
+        startup_warmup_seconds=120.0,
+        max_idle_tool_iterations=3,
+        think_temperature=0.9,
+        generation_timeout=60.0,
+        allow_idle_tools=True,
         emotional_modulation=True,
         workspace_dir=workspace,
-        allow_idle_tools=True,  # Enable sandboxed tool use during reflection
         enable_consolidation=enable_consolidation,
+        consolidation_check_interval=300.0,
     )
 
-    # Create memory server
-    server = MemoryServer(
-        elpis_client=client,
-        config=server_config,
+    idle_handler = IdleHandler(
+        elpis_client=elpis_client,
+        compactor=compactor,
+        tool_engine=tool_engine,
+        mnemosyne_client=mnemosyne_client,
+        config=idle_config,
+    )
+
+    # --- Create client wrapper ---
+    client = LocalPsycheClient(core)
+
+    # --- Create Textual app ---
+    app = PsycheApp(
+        client=client,
+        react_handler=react_handler,
+        idle_handler=idle_handler,
+        elpis_client=elpis_client,
         mnemosyne_client=mnemosyne_client,
     )
-
-    # Create Textual app
-    app = PsycheApp(memory_server=server)
 
     # Track if cleanup already happened (e.g., via action_quit)
     cleanup_done = False
@@ -181,7 +326,7 @@ def main(
         # Always run cleanup after app exits (regardless of how it exited)
         # This ensures memory consolidation happens even on SIGTERM or crashes
         if not cleanup_done:
-            _run_async_cleanup(server)
+            _run_async_cleanup(core)
             cleanup_done = True
 
 

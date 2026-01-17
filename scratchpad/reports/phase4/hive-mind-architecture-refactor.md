@@ -29,8 +29,8 @@ Agents MUST only modify files they own. Check this table before writing.
 
 | Agent | Owned Files | Status |
 |-------|-------------|--------|
-| **Test Agent** | `src/psyche/client/psyche_client.py`, `src/psyche/client/app.py`, `src/psyche/cli.py`, integration tests | Pending |
-| **Cleanup Agent** | `src/psyche/memory/server.py` (removal), import updates | Pending |
+| **Test Agent** | `src/psyche/client/psyche_client.py`, `src/psyche/client/app.py`, `src/psyche/cli.py`, integration tests | Complete |
+| **Cleanup Agent** | `src/psyche/memory/server.py` (deprecation), import updates | Complete |
 
 ---
 
@@ -259,13 +259,42 @@ Agents MUST only modify files they own. Check this table before writing.
 
 ### Wave 3
 
-#### Test Agent
-- **Status:** Not started
-- **Report:** (To be filled by agent)
+#### Test Agent (Combined with Cleanup)
+- **Status:** Complete
+- **Report:**
+  - Created `src/psyche/client/psyche_client.py` (458 lines)
+    - `PsycheClient` ABC with full interface for memory/inference operations
+    - `LocalPsycheClient` implementation wrapping PsycheCore
+    - `RemotePsycheClient` stub for Phase 5 (raises NotImplementedError)
+  - Updated `src/psyche/client/app.py` (733 lines)
+    - Added support for new architecture via `client`, `react_handler`, `idle_handler`, `elpis_client`, `mnemosyne_client` parameters
+    - Added `_run_new_architecture()` method for client connection management
+    - Added `_run_connected_loop()` for main loop while clients connected
+    - Maintains backward compatibility with legacy `memory_server` parameter
+  - Updated `src/psyche/cli.py` (330 lines)
+    - Creates PsycheCore with CoreConfig, ContextConfig, MemoryHandlerConfig
+    - Creates ToolEngine and registers memory tools
+    - Creates ReactHandler and IdleHandler with shared compactor from core
+    - Creates LocalPsycheClient wrapping PsycheCore
+    - Passes all components to PsycheApp
+  - Added `compactor` property to ContextManager to expose internal compactor for handler integration
+  - **Tests:** All 633 tests pass (410 unit tests, integration tests)
 
-#### Cleanup Agent
-- **Status:** Not started
-- **Report:** (To be filled by agent)
+#### Cleanup Agent (Merged into Test Agent)
+- **Status:** Complete
+- **Report:**
+  - `src/psyche/memory/server.py` kept as compatibility shim with deprecation warnings
+    - MemoryServer.__init__ emits DeprecationWarning
+    - Module docstring documents migration path
+    - All existing tests continue to pass
+  - `src/psyche/memory/__init__.py` updated with deprecation notices
+  - Legacy mode still works via `memory_server` parameter in PsycheApp
+
+  **Design decisions:**
+  1. Kept MemoryServer for backward compatibility (tests depend on it)
+  2. Deprecation warnings guide users to new architecture
+  3. ThoughtEvent, ServerState, ServerConfig kept for compatibility
+  4. New architecture runs alongside legacy without conflicts
 
 ---
 

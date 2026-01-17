@@ -3,7 +3,7 @@
 import asyncio
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, Union
+from typing import TYPE_CHECKING, Optional, Dict, Any, Union
 from enum import Enum
 
 from textual.app import App, ComposeResult
@@ -27,6 +27,9 @@ from psyche.client.commands import get_command, format_help_text, format_shortcu
 from psyche.client.psyche_client import PsycheClient, LocalPsycheClient
 from psyche.client.react_handler import ReactHandler, ReactConfig
 from psyche.client.idle_handler import IdleHandler, IdleConfig, ThoughtEvent
+
+if TYPE_CHECKING:
+    from psyche.mcp.client import ElpisClient, MnemosyneClient
 
 # For backward compatibility - allow importing from either location
 try:
@@ -87,6 +90,8 @@ class PsycheApp(App):
         client: Optional[PsycheClient] = None,
         react_handler: Optional[ReactHandler] = None,
         idle_handler: Optional[IdleHandler] = None,
+        elpis_client: Optional["ElpisClient"] = None,
+        mnemosyne_client: Optional["MnemosyneClient"] = None,
         # Legacy mode (deprecated)
         memory_server: Optional["MemoryServer"] = None,
         *args,
@@ -99,6 +104,8 @@ class PsycheApp(App):
             client: PsycheClient for memory/inference operations (new architecture)
             react_handler: ReactHandler for user input processing (new architecture)
             idle_handler: IdleHandler for idle thinking (new architecture)
+            elpis_client: ElpisClient for inference (new architecture)
+            mnemosyne_client: MnemosyneClient for memory (new architecture, optional)
             memory_server: Legacy MemoryServer instance (deprecated)
         """
         super().__init__(*args, **kwargs)
@@ -108,12 +115,15 @@ class PsycheApp(App):
         self._client = client
         self._react_handler = react_handler
         self._idle_handler = idle_handler
+        self._elpis_client = elpis_client
+        self._mnemosyne_client = mnemosyne_client
         self.memory_server = memory_server
 
         # Application state
         self._state = AppState.IDLE
         self._server_task: Optional[asyncio.Task] = None
         self._idle_task: Optional[asyncio.Task] = None
+        self._connection_task: Optional[asyncio.Task] = None
 
         # Tracking for double-tap Ctrl+C to quit
         self._last_ctrl_c: float = 0.0
@@ -183,9 +193,8 @@ class PsycheApp(App):
             # Legacy mode - start memory server
             self._server_task = asyncio.create_task(self._run_server())
         else:
-            # New architecture - start idle thinking loop
-            if self._idle_handler:
-                self._idle_task = asyncio.create_task(self._run_idle_loop())
+            # New architecture - connect clients and start services
+            self._connection_task = asyncio.create_task(self._run_new_architecture())
 
         # Start periodic emotional state updates
         self.set_interval(1.0, self._update_emotional_display)
@@ -220,6 +229,68 @@ class PsycheApp(App):
                     except Exception:
                         pass  # Widgets not ready
                     self._server_task = None
+
+    async def _run_new_architecture(self) -> None:
+        """Run the new architecture with client connections and idle loop."""
+        if not self._elpis_client:
+            logger.error("ElpisClient not configured for new architecture")
+            return
+
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                # Connect to Elpis
+                async with self._elpis_client.connect():
+                    logger.info("Connected to Elpis inference server")
+
+                    # Optionally connect to Mnemosyne
+                    if self._mnemosyne_client:
+                        async with self._mnemosyne_client.connect():
+                            logger.info("Connected to Mnemosyne memory server")
+                            await self._run_connected_loop()
+                    else:
+                        await self._run_connected_loop()
+
+                return  # Normal exit
+
+            except asyncio.CancelledError:
+                # Normal shutdown
+                return
+            except Exception as e:
+                error_msg = f"{type(e).__name__}: {e}"
+                if attempt < max_retries - 1:
+                    logger.warning(f"Connection failed (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.error(f"Connection failed after {max_retries} attempts: {error_msg}")
+                    try:
+                        chat = self.query_one("#chat", ChatView)
+                        chat.add_system_message(f"[CRITICAL] Connection error: {e}")
+                    except Exception:
+                        pass
+                    self._state = AppState.DISCONNECTED
+
+    async def _run_connected_loop(self) -> None:
+        """Run the main loop while clients are connected (new architecture)."""
+        # Start the idle thinking loop
+        if self._idle_handler:
+            self._idle_task = asyncio.create_task(self._run_idle_loop())
+
+        # Keep running until cancelled
+        try:
+            while True:
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            # Cancel idle task on shutdown
+            if self._idle_task and not self._idle_task.done():
+                self._idle_task.cancel()
+                try:
+                    await self._idle_task
+                except asyncio.CancelledError:
+                    pass
 
     async def _run_idle_loop(self) -> None:
         """Run the idle thinking loop (new architecture)."""
@@ -649,6 +720,13 @@ class PsycheApp(App):
             self._idle_task.cancel()
             try:
                 await self._idle_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._connection_task and not self._connection_task.done():
+            self._connection_task.cancel()
+            try:
+                await self._connection_task
             except asyncio.CancelledError:
                 pass
 

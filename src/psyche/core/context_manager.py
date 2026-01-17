@@ -74,6 +74,11 @@ class ContextManager:
         self._system_prompt: Optional[str] = None
 
     @property
+    def compactor(self) -> ContextCompactor:
+        """Get the underlying compactor (for handler integration)."""
+        return self._compactor
+
+    @property
     def messages(self) -> List[Message]:
         """Get current messages in context."""
         return self._compactor.messages
