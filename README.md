@@ -13,21 +13,22 @@ Do robots dream of electric sheep?
 
 Elpis is an MCP (Model Context Protocol) inference server with emotional regulation. It provides a local LLM inference backend that modulates generation parameters based on a valence-arousal emotional model, enabling emotionally-aware AI responses.
 
-The Elpis system consists of three components:
+The Elpis system consists of four components:
 - **Elpis** - Inference server with emotional modulation
 - **Mnemosyne** - Semantic memory server with long-term consolidation
-- **Psyche** - TUI client that orchestrates inference, memory, and tool execution
+- **Psyche** - Core library for memory coordination, handlers, and tool execution
+- **Hermes** - TUI client that provides the user interface
 
 ## Architecture
 
 ```
-Elpis (Inference)          Mnemosyne (Memory)         Psyche (Client)
- - LLM inference            - Semantic storage          - TUI interface
- - Emotional regulation     - Short/long-term memory    - Tool execution
- - Parameter modulation     - Memory consolidation      - Context compaction
- - Steering vectors         - Clustering algorithm      - Idle thinking
-                                    |                          |
-                                    +----------- MCP -----------+
+Elpis (Inference)     Mnemosyne (Memory)      Psyche (Core)         Hermes (TUI)
+ - LLM inference       - Semantic storage      - PsycheCore           - Textual UI
+ - Emotional state     - Short/long-term       - ReactHandler         - Chat view
+ - Parameter mod       - Consolidation         - IdleHandler          - Tool display
+ - Steering vectors    - Clustering            - Tool execution       - Slash commands
+        |                     |                       |                      |
+        +---------------------+----------- MCP -------+----------------------+
 ```
 
 ### Memory Consolidation
@@ -125,23 +126,23 @@ This downloads Llama 3.1 8B Instruct (Q5_K_M, ~6.8GB) from HuggingFace.
 elpis-server
 ```
 
-## Usage with Psyche
+## Usage with Hermes
 
-Elpis is designed to be used via the Psyche harness:
+Elpis is designed to be used via the Hermes TUI:
 
 ```bash
-cd psyche
 pip install -e .
-psyche
+hermes
 ```
 
-**Note:** Psyche uses MCP's stdio transport, which spawns `elpis-server` as a subprocess automatically. You do NOT need to start `elpis-server` separately - just run `psyche`.
+**Note:** Hermes uses MCP's stdio transport, which spawns `elpis-server` and `mnemosyne-server` as subprocesses automatically. You do NOT need to start them separately - just run `hermes`.
 
-The Psyche client provides:
-- Interactive REPL with Rich terminal output
+The Hermes TUI provides:
+- Textual-based terminal interface with chat view
 - Memory management with context compaction
 - Tool execution (file ops, bash, search)
-- Continuous inference loop with idle thinking
+- Idle thinking with emotional state display
+- Slash commands (/help, /status, /emotion, etc.)
 
 ## Training Emotion Vectors
 
@@ -261,10 +262,16 @@ mypy src/elpis
 - [x] Phase 1: Basic Agent Harness
 - [x] Phase 2: MCP servers (inference, memory, tools, emotional regulation)
 - [x] Phase 3: Long-term memory consolidation with clustering
-- [ ] Phase 4: Stability & memory persistence fixes
-- [ ] Phase 5: UX improvements (tool display, interruption support)
-- [ ] Phase 6: Reasoning workflow & architecture refactor
-- [ ] Phase 7: External agent support (OpenAI-compatible HTTP API)
+- [x] Phase 4: Architecture refactor
+  - [x] New architecture: PsycheCore, ReactHandler, IdleHandler
+  - [x] Extract TUI into Hermes package
+  - [x] Remove deprecated MemoryServer (~2,500 lines)
+  - [x] Dreaming investigation for headless mode
+- [ ] Phase 5: Headless API server
+  - [ ] DreamHandler for memory-based introspection
+  - [ ] Wake protocol with state preservation
+  - [ ] HTTP/WebSocket API for external agents
+- [ ] Phase 6: External agent support (OpenAI-compatible API)
 
 ## Author and License
 
