@@ -14,15 +14,14 @@ class TestModelSettings:
         """Test default configuration values."""
         settings = ModelSettings()
         assert settings.path == "./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf"
-        # Memory-optimized defaults: 4096 context + 20 GPU layers fits in 6GB VRAM
         assert settings.context_length == 4096
-        assert settings.gpu_layers == 20
-        # Single-threaded to avoid SIGSEGV race condition in ggml CPU multi-threading
-        assert settings.n_threads == 1
+        # CPU-only defaults for maximum compatibility
+        assert settings.gpu_layers == 0
+        assert settings.n_threads == 4
         assert settings.temperature == 0.7
         assert settings.top_p == 0.9
         assert settings.max_tokens == 4096
-        assert settings.hardware_backend == "auto"
+        assert settings.hardware_backend == "cpu"
 
     def test_custom_values(self):
         """Test custom configuration values."""
