@@ -28,12 +28,12 @@ Phase 4 extracted a clean, modular architecture from the monolithic `MemoryServe
 │  │ ReactHandler │  │ IdleHandler  │  │    ToolEngine         │  │
 │  │  (ReAct loop)│  │ (Reflection) │  │  (Tool execution)     │  │
 │  └──────┬───────┘  └──────┬───────┘  └───────────────────────┘  │
-│         │                 │                                      │
-│         └────────┬────────┘                                      │
-│                  ▼                                               │
-│         ┌────────────────┐                                       │
-│         │ PsycheClient   │  (ABC: Local or Remote)               │
-│         └────────┬───────┘                                       │
+│         │                 │                                     │
+│         └────────┬────────┘                                     │
+│                  ▼                                              │
+│         ┌────────────────┐                                      │
+│         │ PsycheClient   │  (ABC: Local or Remote)              │
+│         └────────┬───────┘                                      │
 └──────────────────┼──────────────────────────────────────────────┘
                    ▼
 ┌──────────────────────────────────────────────────────────────────┐
