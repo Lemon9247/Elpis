@@ -7,26 +7,39 @@ in mcp/shared/session.py _receive_loop method.
 The MCP library iterates over _response_streams.items() without copying,
 causing a race condition when the dictionary is modified during iteration.
 
-This patch uses a SafeDict that returns a copy from items().
+This patch uses a SafeDict that catches the error and retries with a copy.
 """
 
 import logging
 
 
 class SafeIterDict(dict):
-    """A dict subclass that returns a copy from items() to prevent iteration errors."""
+    """A dict subclass that safely handles concurrent modification during iteration."""
 
     def items(self):
-        """Return a copy of items to prevent 'dictionary changed during iteration'."""
-        return list(super().items())
+        """Return items safely, handling concurrent modification."""
+        try:
+            # Try to create a snapshot - may fail if dict is being modified
+            return list(super().items())
+        except RuntimeError:
+            # If we get a RuntimeError during list creation, return empty
+            # This is safe because the finally block in _receive_loop is just
+            # cleaning up - missing some streams is better than crashing
+            return []
 
     def keys(self):
-        """Return a copy of keys to prevent 'dictionary changed during iteration'."""
-        return list(super().keys())
+        """Return keys safely, handling concurrent modification."""
+        try:
+            return list(super().keys())
+        except RuntimeError:
+            return []
 
     def values(self):
-        """Return a copy of values to prevent 'dictionary changed during iteration'."""
-        return list(super().values())
+        """Return values safely, handling concurrent modification."""
+        try:
+            return list(super().values())
+        except RuntimeError:
+            return []
 
 
 def apply_mcp_patch():

@@ -38,7 +38,7 @@ from psyche.core import PsycheCore, CoreConfig, ContextConfig, MemoryHandlerConf
 from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.tools import ToolEngine
 from psyche.tools.tool_engine import ToolSettings
-from psyche.tools.tool_definitions import ToolDefinition
+from psyche.tools.tool_definitions import ToolDefinition, RecallMemoryInput, StoreMemoryInput
 from psyche.tools.implementations.memory_tools import MemoryTools
 
 
@@ -118,19 +118,20 @@ def _register_memory_tools(
                 },
                 "n_results": {
                     "type": "integer",
-                    "description": "Number of memories to retrieve (default: 5)",
+                    "description": "Number of memories to retrieve (1-20, default: 5)",
                     "default": 5,
                 },
             },
             "required": ["query"],
         },
+        input_model=RecallMemoryInput,
         handler=memory_tools.recall_memory,
     ))
 
     # Register store_memory tool
     tool_engine.register_tool(ToolDefinition(
         name="store_memory",
-        description="Store a new memory for future recall. Use this to save important facts, decisions, or experiences.",
+        description="Store a new memory for later recall. Use this to remember important information, facts, or experiences.",
         parameters={
             "type": "object",
             "properties": {
@@ -140,22 +141,22 @@ def _register_memory_tools(
                 },
                 "summary": {
                     "type": "string",
-                    "description": "Brief summary of the memory (optional, auto-generated if not provided)",
+                    "description": "Brief summary of the memory (auto-generated if not provided)",
                 },
                 "memory_type": {
                     "type": "string",
-                    "enum": ["episodic", "semantic", "procedural", "emotional"],
-                    "description": "Type of memory (default: episodic)",
+                    "description": "Type of memory: episodic (events), semantic (facts), procedural (how-to), emotional (feelings)",
                     "default": "episodic",
                 },
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Tags to categorize the memory",
+                    "description": "Optional tags to categorize the memory",
                 },
             },
             "required": ["content"],
         },
+        input_model=StoreMemoryInput,
         handler=memory_tools.store_memory,
     ))
 
@@ -205,9 +206,9 @@ def main(
             checkpoint_interval=20,
         ),
         memory=MemoryHandlerConfig(
-            auto_retrieve=True,
-            auto_store=True,
-            storage_threshold=0.6,
+            enable_auto_retrieval=True,
+            auto_storage=True,
+            auto_storage_threshold=0.6,
         ),
         reasoning_enabled=True,
         emotional_modulation=True,
