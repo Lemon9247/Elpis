@@ -29,16 +29,15 @@ class ModelSettings(BaseSettings):
         le=131072,
         description="Context window size in tokens",
     )
-    # 20 layers fits in 6GB VRAM with 4096 context
-    gpu_layers: int = Field(default=20, ge=0, le=100)
-    # Set to 1 to avoid SIGSEGV race condition in ggml CPU multi-threading
-    # Even with GPU offloading, some ops run on CPU and the threading is buggy
-    n_threads: int = Field(default=1, ge=1, le=64)
+    # Set to 0 for CPU-only inference, or increase for GPU offloading
+    gpu_layers: int = Field(default=0, ge=0, le=100)
+    # For CPU-only inference, use more threads. For GPU, keep low to avoid race conditions.
+    n_threads: int = Field(default=4, ge=1, le=64)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4096, ge=1, le=32768)
     hardware_backend: str = Field(
-        default="auto", description="Hardware backend: auto, cuda, rocm, cpu"
+        default="cpu", description="Hardware backend: auto, cuda, rocm, cpu"
     )
 
     # Transformers-specific settings

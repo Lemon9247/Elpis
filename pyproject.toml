@@ -56,6 +56,7 @@ dev = [
 [project.scripts]
 elpis-server = "elpis.cli:main"
 mnemosyne-server = "mnemosyne.cli:main"
+hermes = "hermes.cli:main"
 psyche = "psyche.cli:main"
 
 [tool.setuptools.packages.find]
@@ -92,7 +93,7 @@ select = ["E", "F", "I", "N", "UP", "W", "B", "A", "C4", "RUF"]
 ignore = ["E501"]  # Line length handled by formatter
 
 [tool.ruff.isort]
-known-first-party = ["elpis", "psyche", "mnemosyne"]
+known-first-party = ["elpis", "psyche", "mnemosyne", "hermes"]
 
 [tool.mypy]
 python_version = "3.10"

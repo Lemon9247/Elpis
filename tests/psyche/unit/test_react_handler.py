@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from psyche.client.react_handler import ReactHandler, ReactConfig, ToolCallResult
+from psyche.handlers import ReactHandler, ReactConfig, ToolCallResult
 from psyche.memory.compaction import ContextCompactor, create_message
 
 
