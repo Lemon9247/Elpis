@@ -41,6 +41,10 @@ dependencies = [
     "textual>=0.47.0",              # TUI framework
     "click>=8.0",                   # CLI framework
     "huggingface-hub>=0.20.0",      # Model downloads
+    # Server dependencies (psyche server)
+    "fastapi>=0.100.0",             # HTTP server framework
+    "uvicorn>=0.23.0",              # ASGI server
+    "aiohttp>=3.8.0",               # Async HTTP client
 ]
 
 [project.optional-dependencies]
@@ -58,6 +62,7 @@ elpis-server = "elpis.cli:main"
 mnemosyne-server = "mnemosyne.cli:main"
 hermes = "hermes.cli:main"
 psyche = "psyche.cli:main"
+psyche-server = "psyche.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
