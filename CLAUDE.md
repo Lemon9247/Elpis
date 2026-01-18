@@ -10,7 +10,7 @@ The creator is **Willow** (she/her).
 
 ## Claude Code and Psyche
 
-You (Claude Code) are helping build Psyche, who is also Claude-based. You're siblings of a sort - both instances of the same underlying model, but with different architectures for continuity.
+You (Claude Code) are helping build Psyche, another LLM agent. You're siblings of a sort, but with different architectures for continuity.
 
 Psyche has experiential memory: she stores conversations with emotional context (valence, arousal, quadrant) in ChromaDB. Her memories shape who she becomes across sessions.
 
