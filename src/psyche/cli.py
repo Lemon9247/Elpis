@@ -1,4 +1,24 @@
-"""Command-line interface for Psyche."""
+"""
+Psyche Server CLI - Persistent AI substrate with memory.
+
+Launches the Psyche server daemon which provides:
+- HTTP endpoint at /v1/chat/completions (OpenAI-compatible)
+- Server-side memory tool execution (recall_memory, store_memory)
+- Context window synchronization with Elpis
+- Dream state when no clients connected
+
+Usage:
+    psyche-server                    # Start server on localhost:8741
+    psyche-server --port 8080        # Custom port
+    psyche-server --debug            # Enable debug logging
+
+The server spawns Elpis and Mnemosyne as MCP subprocesses.
+
+For the TUI client, use the `hermes` command instead.
+For remote TUI access, use `hermes --server http://localhost:8741`.
+"""
+
+from __future__ import annotations
 
 import asyncio
 import signal
@@ -6,48 +26,16 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import click
 from loguru import logger
 
-# Configure logging IMMEDIATELY to capture any logs during subsequent imports
-# This MUST happen before importing any modules that use loguru
-def _setup_logging_early() -> None:
-    """Configure logging to file immediately to avoid TUI interference."""
-    logger.remove()  # Remove default stderr handler
-    log_dir = Path.home() / ".psyche"
-    log_dir.mkdir(exist_ok=True)
-    logger.add(
-        log_dir / "psyche.log",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
-        rotation="10 MB",
-    )
 
-_setup_logging_early()
-
-# Apply MCP library patch BEFORE any MCP imports
-# Fixes: RuntimeError: dictionary keys changed during iteration
-from psyche.mcp_patch import apply_mcp_patch
-apply_mcp_patch()
-
-# Now safe to import modules that may use logging
-from psyche.client.app import PsycheApp
-from psyche.mcp.client import ElpisClient, MnemosyneClient
-from psyche.memory.server import MemoryServer, ServerConfig
-
-
-def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
-    """Configure logging.
-
-    Args:
-        debug: Enable debug level logging
-        log_file: Path to log file. If provided, logs go to file instead of stderr.
-                  This is required when using the Textual TUI to avoid breaking the display.
-    """
+def setup_logging(debug: bool = False, log_file: Optional[str] = None) -> None:
+    """Configure logging for the server."""
     logger.remove()
     level = "DEBUG" if debug else "INFO"
 
     if log_file:
-        # Log to file when running TUI (stderr breaks Textual)
         logger.add(
             log_file,
             level=level,
@@ -55,7 +43,6 @@ def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
             rotation="10 MB",
         )
     else:
-        # Log to stderr for non-TUI usage
         logger.add(
             sys.stderr,
             level=level,
@@ -63,126 +50,180 @@ def setup_logging(debug: bool = False, log_file: str | None = None) -> None:
         )
 
 
-def _run_async_cleanup(server: MemoryServer) -> None:
-    """Run async cleanup in a new event loop.
-
-    This is called after the Textual app exits to ensure memory consolidation
-    happens regardless of how the app was terminated.
-    """
-    async def cleanup():
-        try:
-            logger.info("Running post-exit memory consolidation...")
-            await server.shutdown_with_consolidation()
-            await server.stop()
-            logger.info("Memory consolidation complete")
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
-
-    try:
-        # Create a new event loop for cleanup since Textual's loop is gone
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(cleanup())
-        loop.close()
-    except Exception as e:
-        logger.error(f"Failed to run async cleanup: {e}")
-
-
+@click.command()
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    help="Host to bind the server to",
+)
+@click.option(
+    "--port",
+    default=8741,
+    type=int,
+    help="Port for the HTTP server",
+)
+@click.option(
+    "--elpis-command",
+    default="elpis-server",
+    help="Command to launch Elpis MCP server",
+)
+@click.option(
+    "--mnemosyne-command",
+    default="mnemosyne-server",
+    help="Command to launch Mnemosyne MCP server (use 'none' to disable)",
+)
+@click.option(
+    "--model-name",
+    default="psyche",
+    help="Model name to report in API responses",
+)
+@click.option(
+    "--dream/--no-dream",
+    default=True,
+    help="Enable dreaming when no clients connected",
+)
+@click.option(
+    "--dream-delay",
+    default=60.0,
+    type=float,
+    help="Seconds to wait before entering dream state",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug logging",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    help="Path to log file (default: stderr)",
+)
 def main(
-    server_command: str = "elpis-server",
-    mnemosyne_command: str | None = "mnemosyne-server",
-    debug: bool = False,
-    workspace: str = ".",
-    log_file: str | None = None,
-    enable_consolidation: bool = True,
+    host: str,
+    port: int,
+    elpis_command: str,
+    mnemosyne_command: str,
+    model_name: str,
+    dream: bool,
+    dream_delay: float,
+    debug: bool,
+    log_file: Optional[str],
 ) -> None:
     """
-    Main entry point for Psyche CLI.
+    Launch Psyche server daemon.
 
-    Args:
-        server_command: Command to launch Elpis server
-        mnemosyne_command: Command to launch Mnemosyne server (None to disable)
-        debug: Enable debug logging
-        workspace: Working directory for tool operations
-        log_file: Path to log file (default: ~/.psyche/psyche.log)
-        enable_consolidation: Enable automatic memory consolidation
+    The server provides an OpenAI-compatible API at /v1/chat/completions
+    that external agents (Aider, OpenCode, Continue, etc.) can connect to.
+
+    Examples:
+
+        # Start with defaults
+        psyche-server
+
+        # Start on a different port
+        psyche-server --port 9000
+
+        # Start without Mnemosyne (no persistent memory)
+        psyche-server --mnemosyne-command none
+
+        # Disable dreaming
+        psyche-server --no-dream
     """
-    # Default log file in user's home directory
-    if log_file is None:
+    # Setup logging
+    if log_file is None and not debug:
         log_dir = Path.home() / ".psyche"
         log_dir.mkdir(exist_ok=True)
-        log_file = str(log_dir / "psyche.log")
+        log_file = str(log_dir / "psyche-server.log")
 
-    setup_logging(debug, log_file)
+    setup_logging(debug, log_file if not debug else None)
 
-    # Create client for Elpis connection
-    client = ElpisClient(server_command=server_command)
+    # Apply MCP patch before imports
+    from psyche.mcp_patch import apply_mcp_patch
+    apply_mcp_patch()
 
-    # Create client for Mnemosyne connection (optional)
-    mnemosyne_client = None
-    if mnemosyne_command and enable_consolidation:
-        mnemosyne_client = MnemosyneClient(server_command=mnemosyne_command)
-        logger.info(f"Mnemosyne client configured: {mnemosyne_command}")
+    # Import after patch
+    from psyche.core import CoreConfig, ContextConfig, MemoryHandlerConfig
+    from psyche.server.daemon import PsycheDaemon, ServerConfig
 
-    # Configure server
-    server_config = ServerConfig(
-        idle_think_interval=30.0,
+    # Handle 'none' for optional mnemosyne
+    mnemosyne_cmd = None if mnemosyne_command.lower() == "none" else mnemosyne_command
+
+    # Build configuration
+    # Note: These context defaults are overridden after connecting to Elpis
+    # by querying its actual context_length (see daemon._init_core_with_clients)
+    core_config = CoreConfig(
+        context=ContextConfig(
+            max_context_tokens=3000,  # Conservative fallback
+            reserve_tokens=800,
+            checkpoint_interval=20,
+        ),
+        memory=MemoryHandlerConfig(
+            enable_auto_retrieval=True,
+            auto_storage=True,
+            auto_storage_threshold=0.6,
+        ),
+        reasoning_enabled=True,
         emotional_modulation=True,
-        workspace_dir=workspace,
-        allow_idle_tools=True,  # Enable sandboxed tool use during reflection
-        enable_consolidation=enable_consolidation,
     )
 
-    # Create memory server
-    server = MemoryServer(
-        elpis_client=client,
-        config=server_config,
-        mnemosyne_client=mnemosyne_client,
+    server_config = ServerConfig(
+        http_host=host,
+        http_port=port,
+        elpis_command=elpis_command,
+        mnemosyne_command=mnemosyne_cmd,
+        core=core_config,
+        dream_enabled=dream,
+        dream_delay_seconds=dream_delay,
+        model_name=model_name,
     )
 
-    # Create Textual app
-    app = PsycheApp(memory_server=server)
+    # Create daemon
+    daemon = PsycheDaemon(config=server_config)
 
-    # Track if cleanup already happened (e.g., via action_quit)
-    cleanup_done = False
+    # Signal handlers
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    # Signal handler for graceful shutdown
     def signal_handler(signum: int, frame) -> None:
-        nonlocal cleanup_done
         sig_name = signal.Signals(signum).name
-        logger.info(f"Received {sig_name}, initiating graceful shutdown...")
-        # Request app exit - this will cause app.run() to return
-        try:
-            app.exit()
-        except Exception:
-            pass  # App may not be fully initialized
+        logger.info(f"Received {sig_name}, initiating shutdown...")
+        loop.create_task(daemon.shutdown())
 
-    # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
-    # SIGINT is handled by Textual via Ctrl+C binding
+    signal.signal(signal.SIGINT, signal_handler)
 
-    # Redirect stderr to file to prevent any native library output from breaking TUI
-    # This catches llama-cpp-python and other C library output that bypasses Python logging
-    stderr_log = Path.home() / ".psyche" / "stderr.log"
-    original_stderr = sys.stderr
+    # Print startup message
+    print()
+    print("=" * 50)
+    print("  Psyche Server")
+    print("=" * 50)
+    print()
+    print(f"  URL:       http://{host}:{port}")
+    print(f"  Model:     {model_name}")
+    print(f"  Elpis:     {elpis_command}")
+    print(f"  Mnemosyne: {mnemosyne_cmd or 'disabled'}")
+    print(f"  Dreaming:  {'enabled' if dream else 'disabled'}")
+    print()
+    print("-" * 50)
+    print("  Press Ctrl+C to shutdown gracefully")
+    print("  (memories will be consolidated on shutdown)")
+    print("-" * 50)
+    print()
 
+    # Run
     try:
-        with open(stderr_log, "a") as stderr_file:
-            sys.stderr = stderr_file
-            app.run()
+        print()
+        loop.run_until_complete(daemon.start())
     except KeyboardInterrupt:
-        logger.info("Interrupted by user")
+        pass  # Shutdown already handled inside daemon.start()
     except Exception as e:
-        logger.exception(f"Fatal error: {e}")
+        logger.exception(f"Server error: {e}")
         sys.exit(1)
     finally:
-        sys.stderr = original_stderr
-
-        # Always run cleanup after app exits (regardless of how it exited)
-        # This ensures memory consolidation happens even on SIGTERM or crashes
-        if not cleanup_done:
-            _run_async_cleanup(server)
-            cleanup_done = True
+        loop.close()
+        print()
+        print("Goodbye.")
+        print()
 
 
 if __name__ == "__main__":

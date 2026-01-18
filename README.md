@@ -1,6 +1,6 @@
 ![Elpis Banner](assets/elpis-inline.png)
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![License](https://img.shields.io/badge/license-GPLv3-orange)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://lemon9247.github.io/Elpis/)
@@ -11,24 +11,64 @@ Do robots dream of electric sheep?
 
 ## What is Elpis?
 
-Elpis is an MCP (Model Context Protocol) inference server with emotional regulation. It provides a local LLM inference backend that modulates generation parameters based on a valence-arousal emotional model, enabling emotionally-aware AI responses.
+Elpis is a system for giving AI persistent memory and emotional state. It provides local LLM inference with emotional modulation, semantic memory with consolidation, and a server architecture that enables both local and remote operation.
 
-The Elpis system consists of three components:
-- **Elpis** - Inference server with emotional modulation
-- **Mnemosyne** - Semantic memory server with long-term consolidation
-- **Psyche** - TUI client that orchestrates inference, memory, and tool execution
+The system consists of four components:
+- **Elpis** - Inference MCP server with emotional modulation via valence-arousal model
+- **Mnemosyne** - Memory MCP server with ChromaDB backend and short/long-term consolidation
+- **Psyche** - Core library and HTTP server for memory coordination, tool execution, and dreaming
+- **Hermes** - TUI client for interactive conversations (supports local and remote modes)
 
 ## Architecture
 
+### Local Mode (Default)
+
 ```
-Elpis (Inference)          Mnemosyne (Memory)         Psyche (Client)
- - LLM inference            - Semantic storage          - TUI interface
- - Emotional regulation     - Short/long-term memory    - Tool execution
- - Parameter modulation     - Memory consolidation      - Context compaction
- - Steering vectors         - Clustering algorithm      - Idle thinking
-                                    |                          |
-                                    +----------- MCP -----------+
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│    Hermes    │     │    Elpis     │     │  Mnemosyne   │
+│     (TUI)    │     │  (Inference) │     │   (Memory)   │
+│              │     │              │     │              │
+│ - Chat view  │     │ - LLM gen    │     │ - ChromaDB   │
+│ - Tool exec  │     │ - Emotion    │     │ - Short-term │
+│ - Handlers   │     │ - Steering   │     │ - Long-term  │
+└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+       │                    │                    │
+       └────────────────────┴────────────────────┘
+                         MCP (stdio)
 ```
+
+### Remote Mode (Server)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     PSYCHE SERVER                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │  PsycheCore  │  │    Elpis     │  │  Mnemosyne   │    │
+│  │              │  │  (Inference) │  │   (Memory)   │    │
+│  │ - Context    │  │              │  │              │    │
+│  │ - Handlers   │  │ - LLM gen    │  │ - ChromaDB   │    │
+│  │ - Dreams     │  │ - Emotion    │  │ - Clustering │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                         MCP (stdio)                      │
+└─────────────────────────┬────────────────────────────────┘
+                          │ HTTP API (OpenAI-compatible)
+                          │
+           ┌──────────────┴──────────────┐
+           │                             │
+    ┌──────┴──────┐               ┌──────┴──────┐
+    │   Hermes    │               │   External  │
+    │  (Remote)   │               │   Clients   │
+    │             │               │             │
+    │ - Local     │               │ - Any HTTP  │
+    │   tools     │               │   client    │
+    └─────────────┘               └─────────────┘
+```
+
+### Key Handlers
+
+- **ReactHandler** - Processes user messages, manages tool execution loops
+- **IdleHandler** - Background processing during silence, triggers memory consolidation
+- **DreamHandler** - Memory-based introspection when no clients are connected
 
 ### Memory Consolidation
 
@@ -125,23 +165,54 @@ This downloads Llama 3.1 8B Instruct (Q5_K_M, ~6.8GB) from HuggingFace.
 elpis-server
 ```
 
-## Usage with Psyche
+## Usage
 
-Elpis is designed to be used via the Psyche harness:
+### Local Mode (Recommended for Single User)
+
+Run Hermes directly - it spawns Elpis and Mnemosyne as subprocesses via MCP:
 
 ```bash
-cd psyche
 pip install -e .
-psyche
+hermes
 ```
 
-**Note:** Psyche uses MCP's stdio transport, which spawns `elpis-server` as a subprocess automatically. You do NOT need to start `elpis-server` separately - just run `psyche`.
-
-The Psyche client provides:
-- Interactive REPL with Rich terminal output
+The Hermes TUI provides:
+- Terminal interface with chat view
+- Automatic tool execution (file ops, bash, search)
 - Memory management with context compaction
-- Tool execution (file ops, bash, search)
-- Continuous inference loop with idle thinking
+- Idle thinking with emotional state display
+- Slash commands (/help, /status, /emotion, etc.)
+
+### Server Mode (Remote Access)
+
+Run Psyche as a persistent server for remote connections:
+
+```bash
+# Terminal 1: Start the server
+psyche-server
+
+# Terminal 2: Connect with Hermes
+hermes --server http://localhost:8741
+```
+
+In server mode:
+- Psyche manages memory and executes memory tools server-side
+- Hermes executes file/bash/search tools locally
+- Multiple clients can connect (though memories are shared)
+- Server dreams when no clients are connected
+
+### Direct Server Access
+
+Any HTTP client can use the OpenAI-compatible API:
+
+```bash
+curl http://localhost:8741/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
 
 ## Training Emotion Vectors
 
@@ -261,10 +332,32 @@ mypy src/elpis
 - [x] Phase 1: Basic Agent Harness
 - [x] Phase 2: MCP servers (inference, memory, tools, emotional regulation)
 - [x] Phase 3: Long-term memory consolidation with clustering
-- [ ] Phase 4: Stability & memory persistence fixes
-- [ ] Phase 5: UX improvements (tool display, interruption support)
-- [ ] Phase 6: Reasoning workflow & architecture refactor
-- [ ] Phase 7: External agent support (OpenAI-compatible HTTP API)
+- [x] Phase 4: Architecture refactor
+  - [x] New architecture: PsycheCore, ReactHandler, IdleHandler
+  - [x] Extract TUI into Hermes package
+  - [x] Remove deprecated MemoryServer (~2,500 lines)
+- [x] Phase 5: Headless API server
+  - [x] Psyche HTTP server with OpenAI-compatible API
+  - [x] DreamHandler for memory-based introspection when idle
+  - [x] Client connection tracking and wake/sleep transitions
+- [x] Phase 6: Remote mode tool architecture
+  - [x] Server-side memory tool execution
+  - [x] Client-side file/bash/search tool execution
+  - [x] Context window synchronization between Elpis and Psyche
+- [ ] Phase 7: Memory retrieval quality
+  - [ ] Hybrid search (BM25 + vector with RRF fusion)
+  - [ ] Storage-side filtering (skip questions, min length)
+  - [ ] Quality-weighted ranking (recency, importance, type)
+  - [ ] Memory cleanup tools
+- [ ] Future: Configuration system improvements
+  - [ ] Unified config between Elpis/Psyche/Hermes
+  - [ ] Single source of truth for context_length
+  - [ ] Better environment variable handling
+- [ ] Future: Emotional system enhancements
+  - [ ] More nuanced emotion mapping
+  - [ ] Event history and emotional momentum
+  - [ ] Personality profiles with baseline presets
+- [ ] Future: Advanced memory (graph-based, cross-encoder reranking)
 
 ## Author and License
 

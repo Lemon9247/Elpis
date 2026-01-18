@@ -1,15 +1,15 @@
 # Elpis Quickstart Guide
 
-Get up and running with Elpis emotional inference in 5 minutes.
+Get up and running with Elpis in 5 minutes.
 
 ## What is Elpis?
 
-Elpis is an MCP inference server that modulates LLM generation based on emotional state. It provides:
+Elpis is a system for giving AI persistent memory and emotional state. It provides:
 
+- **Persistent memory** via Mnemosyne with ChromaDB backend
 - **Emotional regulation** using a valence-arousal model
-- **Dual modulation approaches**: sampling parameters or steering vectors
-- **MCP server** for integration with clients like Psyche
-- **Homeostatic regulation** with decay toward baseline
+- **Local and remote modes** for flexible deployment
+- **Dreaming** when idle (memory-based introspection)
 
 ## Prerequisites
 
@@ -67,9 +67,36 @@ Or download manually from [HuggingFace](https://huggingface.co/models?search=ggu
 
 Choose your path based on what you want to do:
 
-### Option A: Run Examples (Fastest)
+### Option A: Local Mode with Hermes (Recommended)
 
-Run the included examples to see Elpis in action:
+Run Hermes directly - it spawns Elpis and Mnemosyne as subprocesses:
+
+```bash
+hermes
+```
+
+That's it! Hermes manages the MCP servers automatically via stdio transport.
+
+### Option B: Server Mode (Remote Access)
+
+Run Psyche as a persistent server for remote connections:
+
+```bash
+# Terminal 1: Start the server
+psyche-server
+
+# Terminal 2: Connect with Hermes
+hermes --server http://localhost:8741
+```
+
+This mode enables:
+- Remote access from different machines
+- Persistent memory across sessions
+- Dreaming when no clients are connected
+
+### Option C: Run Examples
+
+Run the included examples to see the inference engine:
 
 ```bash
 # Basic inference
@@ -84,23 +111,7 @@ python examples/03_steering_vectors.py
 
 See [examples/README.md](examples/README.md) for details.
 
-### Option B: Use Psyche TUI
-
-Psyche is the interactive TUI client that automatically manages the Elpis and Mnemosyne servers:
-
-```bash
-psyche
-```
-
-That's it! Psyche spawns the servers as subprocesses via MCP's stdio transport - no need to start them manually.
-
-**Note:** You can also run standalone servers if needed:
-```bash
-elpis-server      # Inference server only
-mnemosyne-server  # Memory server only
-```
-
-### Option C: Use Programmatically
+### Option D: Use Programmatically
 
 Use Elpis in your own Python code:
 

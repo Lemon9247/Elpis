@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elpis"
-version = "1.0.0"
-description = "MCP inference server with emotional regulation and Psyche client"
+version = "2.0.0"
+description = "AI memory and emotional regulation system with local/remote operation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "GPL-3.0"}
@@ -41,6 +41,10 @@ dependencies = [
     "textual>=0.47.0",              # TUI framework
     "click>=8.0",                   # CLI framework
     "huggingface-hub>=0.20.0",      # Model downloads
+    # Server dependencies (psyche server)
+    "fastapi>=0.100.0",             # HTTP server framework
+    "uvicorn>=0.23.0",              # ASGI server
+    "aiohttp>=3.8.0",               # Async HTTP client
 ]
 
 [project.optional-dependencies]
@@ -56,7 +60,9 @@ dev = [
 [project.scripts]
 elpis-server = "elpis.cli:main"
 mnemosyne-server = "mnemosyne.cli:main"
+hermes = "hermes.cli:main"
 psyche = "psyche.cli:main"
+psyche-server = "psyche.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -92,7 +98,7 @@ select = ["E", "F", "I", "N", "UP", "W", "B", "A", "C4", "RUF"]
 ignore = ["E501"]  # Line length handled by formatter
 
 [tool.ruff.isort]
-known-first-party = ["elpis", "psyche", "mnemosyne"]
+known-first-party = ["elpis", "psyche", "mnemosyne", "hermes"]
 
 [tool.mypy]
 python_version = "3.10"

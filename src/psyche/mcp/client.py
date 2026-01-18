@@ -56,6 +56,9 @@ class ElpisClient:
     - Text generation with emotional modulation
     - Function/tool call generation
     - Emotional state management
+
+    Note: All session operations are protected by an async lock to prevent
+    concurrent access to the MCP session, which is not thread-safe.
     """
 
     def __init__(
@@ -77,6 +80,8 @@ class ElpisClient:
         self.quiet = quiet
         self._session: Optional[ClientSession] = None
         self._connected = False
+        # Lock is initialized early for test compatibility
+        self._session_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -137,15 +142,21 @@ class ElpisClient:
             raise RuntimeError("Not connected to Elpis server. Use 'async with client.connect()'")
 
     async def _call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a tool on the server and return parsed result."""
+        """Call a tool on the server and return parsed result.
+
+        Uses a lock to prevent concurrent access to the MCP session.
+        """
         self._ensure_connected()
 
-        result = await self._session.call_tool(name, arguments)
+        # Use lock to ensure exclusive access to the session
+        # This prevents concurrent calls from corrupting the session state
+        async with self._session_lock:
+            result = await self._session.call_tool(name, arguments)
 
-        # Parse the JSON response
-        if result.content and len(result.content) > 0:
-            return json.loads(result.content[0].text)
-        return {}
+            # Parse the JSON response
+            if result.content and len(result.content) > 0:
+                return json.loads(result.content[0].text)
+            return {}
 
     async def generate(
         self,
@@ -330,6 +341,15 @@ class ElpisClient:
         result = await self._call_tool("get_emotion", {})
         return EmotionalState.from_dict(result)
 
+    async def get_capabilities(self) -> Dict[str, Any]:
+        """
+        Get server capabilities including context window size.
+
+        Returns:
+            Dictionary with context_length, max_tokens, backend, etc.
+        """
+        return await self._call_tool("get_capabilities", {})
+
     async def read_resource(self, uri: str) -> str:
         """
         Read a resource from the server.
@@ -342,10 +362,11 @@ class ElpisClient:
         """
         self._ensure_connected()
 
-        result = await self._session.read_resource(uri)
-        if result.contents and len(result.contents) > 0:
-            return result.contents[0].text
-        return ""
+        async with self._session_lock:
+            result = await self._session.read_resource(uri)
+            if result.contents and len(result.contents) > 0:
+                return result.contents[0].text
+            return ""
 
     async def list_available_events(self) -> Dict[str, Any]:
         """
@@ -388,6 +409,9 @@ class MnemosyneClient:
     - Memory storage and retrieval
     - Memory consolidation
     - Memory statistics
+
+    Note: All session operations are protected by an async lock to prevent
+    concurrent access to the MCP session, which is not thread-safe.
     """
 
     def __init__(
@@ -409,6 +433,8 @@ class MnemosyneClient:
         self.quiet = quiet
         self._session: Optional[ClientSession] = None
         self._connected = False
+        # Lock is initialized early for test compatibility
+        self._session_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -459,15 +485,20 @@ class MnemosyneClient:
             raise RuntimeError("Not connected to Mnemosyne server. Use 'async with client.connect()'")
 
     async def _call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a tool on the server and return parsed result."""
+        """Call a tool on the server and return parsed result.
+
+        Uses a lock to prevent concurrent access to the MCP session.
+        """
         self._ensure_connected()
 
-        result = await self._session.call_tool(name, arguments)
+        # Use lock to ensure exclusive access to the session
+        async with self._session_lock:
+            result = await self._session.call_tool(name, arguments)
 
-        # Parse the JSON response
-        if result.content and len(result.content) > 0:
-            return json.loads(result.content[0].text)
-        return {}
+            # Parse the JSON response
+            if result.content and len(result.content) > 0:
+                return json.loads(result.content[0].text)
+            return {}
 
     async def should_consolidate(self) -> tuple[bool, str, int, int]:
         """

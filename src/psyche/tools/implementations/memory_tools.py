@@ -97,7 +97,7 @@ class MemoryTools:
         try:
             # Auto-generate summary if not provided
             if not summary:
-                summary = content[:100] + ("..." if len(content) > 100 else "")
+                summary = content[:500] + ("..." if len(content) > 500 else "")
 
             # Get current emotional context if available
             emotional_context = None

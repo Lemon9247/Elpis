@@ -1,4 +1,24 @@
-"""MCP server entry point for Elpis emotional inference."""
+"""
+Elpis MCP Server - Emotional inference engine.
+
+Provides LLM inference with emotional modulation via:
+- Valence-arousal emotional state model
+- Sampling parameter modulation (temperature, top_p)
+- Steering vectors (transformers backend, experimental)
+- Homeostatic regulation with decay toward baseline
+
+MCP Tools:
+- generate: Text generation with emotional modulation
+- generate_stream: Streaming generation (start/poll/stop)
+- set_emotion: Directly set emotional state
+- process_event: Update emotion via events (success, failure, etc.)
+- get_emotion: Query current emotional state
+- get_capabilities: Query model context length and configuration
+
+Backends:
+- llama-cpp: GGUF models, sampling parameter modulation
+- transformers: HuggingFace models, steering vector support
+"""
 
 import asyncio
 import json
@@ -244,6 +264,14 @@ async def list_tools() -> List[Tool]:
                 "required": ["stream_id"],
             },
         ),
+        Tool(
+            name="get_capabilities",
+            description="Get server capabilities including context window size and model info.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
 
 
@@ -269,6 +297,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             result = await _handle_generate_stream_read(ctx, arguments)
         elif name == "generate_stream_cancel":
             result = await _handle_generate_stream_cancel(ctx, arguments)
+        elif name == "get_capabilities":
+            result = _handle_get_capabilities(ctx)
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -502,6 +532,22 @@ async def _handle_generate_stream_cancel(ctx: ServerContext, args: Dict[str, Any
     return {
         "status": "cancelled",
         "stream_id": stream_id,
+    }
+
+
+def _handle_get_capabilities(ctx: ServerContext) -> Dict[str, Any]:
+    """
+    Handle get_capabilities tool call.
+
+    Returns server capabilities including context window size and model info.
+    """
+    return {
+        "context_length": ctx.settings.model.context_length,
+        "max_tokens": ctx.settings.model.max_tokens,
+        "backend": ctx.settings.model.backend,
+        "model_path": ctx.settings.model.path,
+        "temperature": ctx.settings.model.temperature,
+        "top_p": ctx.settings.model.top_p,
     }
 
 
