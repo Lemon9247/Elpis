@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import click
 from loguru import logger
 
 
@@ -35,7 +36,15 @@ apply_mcp_patch()
 # Now safe to import modules that may use logging
 from hermes.app import Hermes
 from psyche.core import CoreConfig, ContextConfig, MemoryHandlerConfig, PsycheCore
-from psyche.handlers import IdleConfig, IdleHandler, LocalPsycheClient, ReactConfig, ReactHandler
+from psyche.handlers import (
+    IdleConfig,
+    IdleHandler,
+    LocalPsycheClient,
+    PsycheClient,
+    ReactConfig,
+    ReactHandler,
+    RemotePsycheClient,
+)
 from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.tools import ToolEngine
 from psyche.tools.implementations.memory_tools import MemoryTools
@@ -94,6 +103,26 @@ def _run_async_cleanup(core: PsycheCore) -> None:
         loop.close()
     except Exception as e:
         logger.error(f"Failed to run async cleanup: {e}")
+
+
+def _run_async_disconnect(client: RemotePsycheClient) -> None:
+    """Disconnect remote client in a new event loop."""
+
+    async def disconnect():
+        try:
+            logger.info("Disconnecting from Psyche server...")
+            await client.disconnect()
+            logger.info("Disconnected")
+        except Exception as e:
+            logger.error(f"Error during disconnect: {e}")
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(disconnect())
+        loop.close()
+    except Exception as e:
+        logger.error(f"Failed to disconnect: {e}")
 
 
 def _register_memory_tools(
@@ -169,35 +198,19 @@ def _register_memory_tools(
     logger.info("Memory tools registered: recall_memory, store_memory")
 
 
-def main(
-    server_command: str = "elpis-server",
-    mnemosyne_command: str | None = "mnemosyne-server",
-    debug: bool = False,
-    workspace: str = ".",
-    log_file: str | None = None,
-    enable_consolidation: bool = True,
+def _run_local_mode(
+    elpis_command: str,
+    mnemosyne_command: Optional[str],
+    debug: bool,
+    workspace: str,
+    log_file: str,
+    enable_consolidation: bool,
 ) -> None:
-    """
-    Main entry point for Hermes TUI.
-
-    Args:
-        server_command: Command to launch Elpis server
-        mnemosyne_command: Command to launch Mnemosyne server (None to disable)
-        debug: Enable debug logging
-        workspace: Working directory for tool operations
-        log_file: Path to log file (default: ~/.psyche/psyche.log)
-        enable_consolidation: Enable automatic memory consolidation
-    """
-    # Default log file in user's home directory
-    if log_file is None:
-        log_dir = Path.home() / ".psyche"
-        log_dir.mkdir(exist_ok=True)
-        log_file = str(log_dir / "psyche.log")
-
+    """Run Hermes in local mode with embedded PsycheCore."""
     setup_logging(debug, log_file)
 
     # --- Create MCP clients ---
-    elpis_client = ElpisClient(server_command=server_command)
+    elpis_client = ElpisClient(server_command=elpis_command)
 
     mnemosyne_client = None
     if mnemosyne_command and enable_consolidation:
@@ -295,7 +308,7 @@ def main(
         mnemosyne_client=mnemosyne_client,
     )
 
-    # Track if cleanup already happened (e.g., via action_quit)
+    # Track if cleanup already happened
     cleanup_done = False
 
     # Signal handler for graceful shutdown
@@ -303,18 +316,14 @@ def main(
         nonlocal cleanup_done
         sig_name = signal.Signals(signum).name
         logger.info(f"Received {sig_name}, initiating graceful shutdown...")
-        # Request app exit - this will cause app.run() to return
         try:
             app.exit()
         except Exception:
-            pass  # App may not be fully initialized
+            pass
 
-    # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
-    # SIGINT is handled by Textual via Ctrl+C binding
 
-    # Redirect stderr to file to prevent any native library output from breaking TUI
-    # This catches llama-cpp-python and other C library output that bypasses Python logging
+    # Redirect stderr to file
     stderr_log = Path.home() / ".psyche" / "stderr.log"
     original_stderr = sys.stderr
 
@@ -329,12 +338,198 @@ def main(
         sys.exit(1)
     finally:
         sys.stderr = original_stderr
-
-        # Always run cleanup after app exits (regardless of how it exited)
-        # This ensures memory consolidation happens even on SIGTERM or crashes
         if not cleanup_done:
             _run_async_cleanup(core)
             cleanup_done = True
+
+
+def _run_remote_mode(
+    server_url: str,
+    debug: bool,
+    workspace: str,
+    log_file: str,
+) -> None:
+    """Run Hermes in remote mode, connecting to a Psyche server."""
+    setup_logging(debug, log_file)
+
+    logger.info(f"Connecting to Psyche server at {server_url}...")
+
+    # --- Create remote client ---
+    client = RemotePsycheClient(base_url=server_url)
+
+    # Connect synchronously before starting TUI
+    async def connect():
+        await client.connect()
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(connect())
+        loop.close()
+    except Exception as e:
+        logger.error(f"Failed to connect to server: {e}")
+        print(f"Error: Cannot connect to Psyche server at {server_url}")
+        print(f"Make sure the server is running: psyche-server --port {server_url.split(':')[-1]}")
+        sys.exit(1)
+
+    logger.info("Connected to Psyche server")
+
+    # --- Create ToolEngine (tools run locally) ---
+    tool_engine = ToolEngine(
+        workspace_dir=workspace,
+        settings=ToolSettings(),
+    )
+
+    # Set tools in OpenAI format for remote client
+    client.set_tools(tool_engine.get_openai_tool_definitions())
+    tool_descriptions = tool_engine.get_tool_descriptions()
+    client.set_tool_descriptions(tool_descriptions)
+
+    # --- Create handlers ---
+    # Note: In remote mode, we don't have direct access to the compactor
+    # ReactHandler will need to work differently
+
+    react_config = ReactConfig(
+        max_tool_iterations=10,
+        max_tool_result_chars=16000,
+        generation_timeout=120.0,
+        emotional_modulation=True,
+        reasoning_enabled=True,
+    )
+
+    # For remote mode, we need a simplified setup
+    # The idle handler won't work without elpis_client
+    # For now, we run without idle behavior in remote mode
+
+    # --- Create Textual app ---
+    app = Hermes(
+        client=client,
+        react_handler=None,  # Will use client directly
+        idle_handler=None,  # No idle in remote mode
+        elpis_client=None,  # Not available in remote mode
+        mnemosyne_client=None,
+    )
+
+    # Signal handler
+    def signal_handler(signum: int, frame) -> None:
+        sig_name = signal.Signals(signum).name
+        logger.info(f"Received {sig_name}, disconnecting...")
+        try:
+            app.exit()
+        except Exception:
+            pass
+
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Redirect stderr
+    stderr_log = Path.home() / ".psyche" / "stderr.log"
+    original_stderr = sys.stderr
+
+    try:
+        with open(stderr_log, "a") as stderr_file:
+            sys.stderr = stderr_file
+            app.run()
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+    except Exception as e:
+        logger.exception(f"Fatal error: {e}")
+        sys.exit(1)
+    finally:
+        sys.stderr = original_stderr
+        _run_async_disconnect(client)
+
+
+@click.command()
+@click.option(
+    "--server",
+    "server_url",
+    default=None,
+    help="Connect to remote Psyche server (e.g., http://localhost:8741)",
+)
+@click.option(
+    "--elpis-command",
+    default="elpis-server",
+    help="Command to launch Elpis server (local mode only)",
+)
+@click.option(
+    "--mnemosyne-command",
+    default="mnemosyne-server",
+    help="Command to launch Mnemosyne server (local mode only, use 'none' to disable)",
+)
+@click.option(
+    "--workspace",
+    default=".",
+    type=click.Path(exists=True),
+    help="Working directory for tool operations",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug logging",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    help="Path to log file",
+)
+@click.option(
+    "--no-memory",
+    is_flag=True,
+    help="Disable memory consolidation (local mode only)",
+)
+def main(
+    server_url: Optional[str],
+    elpis_command: str,
+    mnemosyne_command: str,
+    workspace: str,
+    debug: bool,
+    log_file: Optional[str],
+    no_memory: bool,
+) -> None:
+    """
+    Hermes - TUI client for Psyche.
+
+    Run in local mode (default) or connect to a remote Psyche server.
+
+    Examples:
+
+        # Local mode (spawns Elpis and Mnemosyne)
+        hermes
+
+        # Connect to remote Psyche server
+        hermes --server http://localhost:8741
+
+        # Local mode without memory
+        hermes --no-memory
+    """
+    # Default log file
+    if log_file is None:
+        log_dir = Path.home() / ".psyche"
+        log_dir.mkdir(exist_ok=True)
+        log_file = str(log_dir / "psyche.log")
+
+    # Handle 'none' for mnemosyne
+    mnemosyne_cmd = None if mnemosyne_command.lower() == "none" else mnemosyne_command
+
+    if server_url:
+        # Remote mode
+        print(f"Connecting to Psyche server at {server_url}...")
+        _run_remote_mode(
+            server_url=server_url,
+            debug=debug,
+            workspace=workspace,
+            log_file=log_file,
+        )
+    else:
+        # Local mode
+        _run_local_mode(
+            elpis_command=elpis_command,
+            mnemosyne_command=mnemosyne_cmd,
+            debug=debug,
+            workspace=workspace,
+            log_file=log_file,
+            enable_consolidation=not no_memory,
+        )
 
 
 if __name__ == "__main__":

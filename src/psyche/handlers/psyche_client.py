@@ -359,22 +359,108 @@ class RemotePsycheClient(PsycheClient):
     """
     HTTP connection to remote Psyche Server.
 
-    Stub for Phase 5 - raises NotImplementedError for now.
-    This will enable multi-client server mode where multiple
-    TUI instances can connect to a shared Psyche server.
+    Connects to a Psyche server via OpenAI-compatible HTTP API.
+    This enables multi-client mode where multiple TUI instances
+    can share the same Psyche substrate.
+
+    The server maintains conversation state - this client just
+    sends requests and receives responses.
     """
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str = "http://127.0.0.1:8741"):
         """
         Initialize the remote client.
 
         Args:
-            base_url: Base URL of the Psyche server (e.g., "http://localhost:8080")
+            base_url: Base URL of the Psyche server
         """
-        self.base_url = base_url
+        self.base_url = base_url.rstrip("/")
+        self._session: Optional[Any] = None  # aiohttp.ClientSession
+        self._connected = False
+
+        # Local state mirrors
+        self._tool_descriptions: str = ""
+        self._reasoning_enabled: bool = True
+        self._messages: List[Dict[str, str]] = []  # Local message history
+        self._tools: List[Dict[str, Any]] = []  # Tool definitions in OpenAI format
+
+        # Cached status (refreshed on demand)
+        self._cached_status: Dict[str, Any] = {}
+        self._mnemosyne_available: bool = False
+
+    async def connect(self) -> None:
+        """Establish connection to the server."""
+        import aiohttp
+
+        self._session = aiohttp.ClientSession()
+
+        # Verify connection with health check
+        try:
+            async with self._session.get(f"{self.base_url}/health") as resp:
+                if resp.status != 200:
+                    raise ConnectionError(f"Server returned {resp.status}")
+                data = await resp.json()
+                self._connected = True
+
+                # Get initial status
+                await self._refresh_status()
+
+        except aiohttp.ClientError as e:
+            await self._session.close()
+            self._session = None
+            raise ConnectionError(f"Cannot connect to Psyche server: {e}")
+
+    async def disconnect(self) -> None:
+        """Close connection to the server."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+        self._connected = False
+
+    async def _ensure_connected(self) -> None:
+        """Ensure we have an active connection."""
+        if not self._session:
+            await self.connect()
+
+    async def _refresh_status(self) -> None:
+        """Refresh cached status from server."""
+        # Use a simple request to check status
+        # In future, could add a /status endpoint
+        pass
+
+    async def _chat_request(
+        self,
+        messages: List[Dict[str, str]],
+        stream: bool = False,
+        max_tokens: int = 2048,
+        temperature: Optional[float] = None,
+    ) -> Any:
+        """Send chat completion request to server."""
+        await self._ensure_connected()
+
+        payload = {
+            "model": "psyche",
+            "messages": messages,
+            "stream": stream,
+            "max_tokens": max_tokens,
+        }
+
+        if temperature is not None:
+            payload["temperature"] = temperature
+
+        if self._tools:
+            payload["tools"] = self._tools
+
+        return await self._session.post(
+            f"{self.base_url}/v1/chat/completions",
+            json=payload,
+        )
 
     async def add_user_message(self, content: str) -> Optional[str]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Add user message. Returns memory context if retrieved."""
+        self._messages.append({"role": "user", "content": content})
+        # Memory retrieval happens server-side, we don't get direct feedback
+        return None
 
     async def add_assistant_message(
         self,
@@ -382,17 +468,49 @@ class RemotePsycheClient(PsycheClient):
         user_message: str = "",
         tool_results: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Add assistant message to local history."""
+        self._messages.append({"role": "assistant", "content": content})
 
     def add_tool_result(self, tool_name: str, result: str) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Add a tool result to conversation."""
+        self._messages.append({
+            "role": "tool",
+            "name": tool_name,
+            "content": result,
+        })
 
     async def generate(
         self,
         max_tokens: int = 2048,
         temperature: Optional[float] = None,
     ) -> Dict[str, Any]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Generate a response from the server."""
+        async with await self._chat_request(
+            self._messages,
+            stream=False,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ) as resp:
+            if resp.status != 200:
+                error = await resp.text()
+                raise RuntimeError(f"Server error: {error}")
+
+            data = await resp.json()
+
+            # Extract response
+            choice = data.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            content = message.get("content", "")
+
+            # Add to local history
+            self._messages.append({"role": "assistant", "content": content})
+
+            return {
+                "content": content,
+                "thinking": "",
+                "has_thinking": False,
+                "tool_calls": message.get("tool_calls"),
+            }
 
     async def generate_stream(
         self,
@@ -400,13 +518,52 @@ class RemotePsycheClient(PsycheClient):
         temperature: Optional[float] = None,
         on_token: Optional[Callable[[str], None]] = None,
     ) -> AsyncIterator[str]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
-        # Make this a generator (required for async generator type)
-        if False:
-            yield ""
+        """Stream a response token by token."""
+        import json
+
+        async with await self._chat_request(
+            self._messages,
+            stream=True,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ) as resp:
+            if resp.status != 200:
+                error = await resp.text()
+                raise RuntimeError(f"Server error: {error}")
+
+            full_content = ""
+
+            async for line in resp.content:
+                line = line.decode("utf-8").strip()
+                if not line or not line.startswith("data: "):
+                    continue
+
+                data_str = line[6:]  # Remove "data: " prefix
+                if data_str == "[DONE]":
+                    break
+
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    token = delta.get("content", "")
+
+                    if token:
+                        full_content += token
+                        if on_token:
+                            on_token(token)
+                        yield token
+
+                except json.JSONDecodeError:
+                    continue
+
+            # Add complete response to history
+            if full_content:
+                self._messages.append({"role": "assistant", "content": full_content})
 
     async def retrieve_memories(self, query: str, n: int = 3) -> List[Dict[str, Any]]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Retrieve memories via server."""
+        # For now, return empty - would need MCP endpoint
+        return []
 
     async def store_memory(
         self,
@@ -414,44 +571,77 @@ class RemotePsycheClient(PsycheClient):
         importance: float = 0.5,
         tags: Optional[List[str]] = None,
     ) -> bool:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Store a memory via server."""
+        # For now, return False - would need MCP endpoint
+        return False
 
     async def get_emotion(self) -> Dict[str, Any]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Get emotional state from server."""
+        # Would need dedicated endpoint or MCP
+        return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
 
     async def update_emotion(
         self,
         event_type: str,
         intensity: float = 1.0,
     ) -> Dict[str, Any]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Update emotional state on server."""
+        # Would need dedicated endpoint or MCP
+        return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
 
     def set_reasoning_mode(self, enabled: bool) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Toggle reasoning mode (local flag, server controls actual behavior)."""
+        self._reasoning_enabled = enabled
 
     async def shutdown(self) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Disconnect from server."""
+        await self.disconnect()
 
     def clear_context(self) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Clear local message history."""
+        self._messages = []
 
     def initialize(self) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Initialize is a no-op for remote client (server is already initialized)."""
+        pass
 
     def set_tool_descriptions(self, descriptions: str) -> None:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Store tool descriptions for sending with requests."""
+        self._tool_descriptions = descriptions
+
+    def set_tools(self, tools: List[Dict[str, Any]]) -> None:
+        """
+        Set tool definitions in OpenAI format.
+
+        Args:
+            tools: List of tool definitions in OpenAI format
+        """
+        self._tools = tools
 
     def get_api_messages(self) -> List[Dict[str, str]]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Get local message history."""
+        return list(self._messages)
 
     @property
     def reasoning_enabled(self) -> bool:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Check if reasoning is enabled."""
+        return self._reasoning_enabled
 
     @property
     def context_summary(self) -> Dict[str, Any]:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Get context summary (local approximation)."""
+        return {
+            "message_count": len(self._messages),
+            "remote": True,
+            "server_url": self.base_url,
+        }
 
     @property
     def is_mnemosyne_available(self) -> bool:
-        raise NotImplementedError("Remote client will be implemented in Phase 5")
+        """Check if Mnemosyne is available (cached from server)."""
+        return self._mnemosyne_available
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if connected to server."""
+        return self._connected

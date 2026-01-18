@@ -237,6 +237,28 @@ class ToolEngine:
         """
         return [tool.to_openai_schema() for tool in self.tools.values()]
 
+    def get_openai_tool_definitions(self) -> List[Dict[str, Any]]:
+        """
+        Return tool definitions in OpenAI API format.
+
+        This format is suitable for sending to the Psyche server's
+        /v1/chat/completions endpoint.
+
+        Returns:
+            List of tool definitions with type="function" wrapper
+        """
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            for tool in self.tools.values()
+        ]
+
     def get_tool_descriptions(self) -> str:
         """
         Return human-readable descriptions of available tools.
