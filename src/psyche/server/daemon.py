@@ -11,8 +11,9 @@ Manages:
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional, Set
+from typing import TYPE_CHECKING, AsyncIterator, Optional, Set
 
 import uvicorn
 from loguru import logger
@@ -92,51 +93,77 @@ class PsycheDaemon:
         """Start the Psyche server."""
         logger.info("Starting Psyche daemon...")
 
-        try:
-            # 1. Create MCP clients for Elpis and Mnemosyne
-            await self._init_clients()
-
-            # 2. Create PsycheCore
-            await self._init_core()
-
-            # 3. Create HTTP server
-            self._init_http_server()
-
-            # 4. Create dream handler (if enabled)
-            if self.config.dream_enabled:
-                await self._init_dream_handler()
-
-            # 5. Start serving
-            self._running = True
-            logger.info(
-                f"Psyche server running at http://{self.config.http_host}:{self.config.http_port}"
-            )
-
-            await self._run_server()
-
-        except Exception as e:
-            logger.error(f"Failed to start daemon: {e}")
-            await self.shutdown()
-            raise
-
-    async def _init_clients(self) -> None:
-        """Initialize MCP clients."""
-        # Elpis client (required)
+        # Create MCP client objects
         self.elpis_client = ElpisClient(server_command=self.config.elpis_command)
         logger.info(f"Elpis client configured: {self.config.elpis_command}")
 
-        # Mnemosyne client (optional)
         if self.config.mnemosyne_command:
             self.mnemosyne_client = MnemosyneClient(
                 server_command=self.config.mnemosyne_command
             )
             logger.info(f"Mnemosyne client configured: {self.config.mnemosyne_command}")
 
-    async def _init_core(self) -> None:
-        """Initialize PsycheCore."""
+        try:
+            # Use nested context managers to keep MCP servers running
+            async with self._connect_elpis() as elpis:
+                async with self._connect_mnemosyne() as mnemosyne:
+                    # Initialize core with connected clients
+                    await self._init_core_with_clients(elpis, mnemosyne)
+
+                    # Create HTTP server
+                    self._init_http_server()
+
+                    # Create dream handler (if enabled)
+                    if self.config.dream_enabled:
+                        await self._init_dream_handler()
+
+                    # Start serving
+                    self._running = True
+                    logger.info(
+                        f"Psyche server running at http://{self.config.http_host}:{self.config.http_port}"
+                    )
+
+                    await self._run_server()
+
+        except Exception as e:
+            logger.error(f"Failed to start daemon: {e}")
+            raise
+        finally:
+            await self.shutdown()
+
+    @asynccontextmanager
+    async def _connect_elpis(self) -> AsyncIterator[ElpisClient]:
+        """Connect to Elpis server."""
+        if not self.elpis_client:
+            raise RuntimeError("Elpis client not configured")
+
+        async with self.elpis_client.connect() as client:
+            yield client
+
+    @asynccontextmanager
+    async def _connect_mnemosyne(self) -> AsyncIterator[Optional[MnemosyneClient]]:
+        """Connect to Mnemosyne server (optional)."""
+        if not self.mnemosyne_client:
+            yield None
+            return
+
+        try:
+            async with self.mnemosyne_client.connect() as client:
+                yield client
+        except Exception as e:
+            logger.warning(f"Failed to connect to Mnemosyne: {e}")
+            logger.warning("Continuing without persistent memory")
+            yield None
+
+    async def _init_core_with_clients(
+        self,
+        elpis: ElpisClient,
+        mnemosyne: Optional[MnemosyneClient],
+    ) -> None:
+        """Initialize PsycheCore with connected clients."""
         self.core = PsycheCore(
-            elpis_client=self.elpis_client,
-            mnemosyne_client=self.mnemosyne_client,
+            elpis_client=elpis,
+            mnemosyne_client=mnemosyne,
             config=self.config.core,
         )
         self.core.initialize()
