@@ -165,20 +165,8 @@ class DreamHandler:
             return []
 
         try:
-            # Use a varied query to get diverse memories
-            # In a full implementation, this could use random sampling
-            queries = [
-                "important moments",
-                "things I learned",
-                "conversations",
-                "feelings",
-            ]
-
-            # Rotate through queries based on dream count
-            query = queries[self._dream_count % len(queries)]
-
-            memories = await self.core.retrieve_memories(
-                query=query,
+            # Use random/diverse memory retrieval for dreams
+            memories = await self.core.retrieve_random_memories(
                 n=self.config.memory_query_count,
             )
             return memories
@@ -216,18 +204,13 @@ Your dream:"""
     async def _generate_dream(self, prompt: str) -> Optional[str]:
         """Generate dream content."""
         try:
-            # Add dream prompt to context temporarily
-            # Note: We don't use add_user_message because we don't want
-            # memory retrieval during dreams
-
-            # For now, use generate directly with the prompt
-            # In future, could use a separate generation method
-            result = await self.core.generate(
+            # Use dedicated dream generation method that bypasses normal context
+            content = await self.core.generate_dream(
+                dream_prompt=prompt,
                 max_tokens=self.config.dream_max_tokens,
                 temperature=self.config.dream_temperature,
             )
-
-            return result.get("content", "")
+            return content
 
         except Exception as e:
             logger.warning(f"Failed to generate dream: {e}")

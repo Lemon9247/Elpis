@@ -417,6 +417,87 @@ When you need a tool, use this format and then STOP:
                 on_token(token)
             yield token
 
+    # --- Dream Generation ---
+
+    async def generate_dream(
+        self,
+        dream_prompt: str,
+        max_tokens: int = 500,
+        temperature: float = 0.9,
+    ) -> str:
+        """
+        Generate dream content from a specific prompt.
+
+        This bypasses the normal context and generates directly from
+        the dream prompt. Used for memory palace exploration.
+
+        Args:
+            dream_prompt: The dream prompt with memory context
+            max_tokens: Maximum tokens to generate
+            temperature: Higher for more creative dreams
+
+        Returns:
+            Generated dream content
+        """
+        # Build minimal messages for dream generation
+        messages = [
+            {"role": "system", "content": "You are in a dream state, free to explore memories and make connections."},
+            {"role": "user", "content": dream_prompt},
+        ]
+
+        result = await self.elpis.generate(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            emotional_modulation=self.config.emotional_modulation,
+        )
+
+        return result.content
+
+    async def retrieve_random_memories(self, n: int = 10) -> List[Dict[str, Any]]:
+        """
+        Retrieve random/diverse memories for dream seeding.
+
+        Uses varied queries to get a diverse set of memories.
+
+        Args:
+            n: Number of memories to retrieve
+
+        Returns:
+            List of memory dictionaries
+        """
+        if not self.mnemosyne or not self.mnemosyne.is_connected:
+            return []
+
+        # Use varied queries for diversity
+        queries = [
+            "important moments",
+            "things learned",
+            "conversations",
+            "feelings and emotions",
+            "discoveries",
+        ]
+
+        all_memories = []
+        per_query = max(1, n // len(queries))
+
+        for query in queries:
+            if len(all_memories) >= n:
+                break
+            memories = await self._memory.retrieve_relevant(query, per_query)
+            all_memories.extend(memories)
+
+        # Deduplicate by content
+        seen = set()
+        unique_memories = []
+        for m in all_memories:
+            content = m.get("content", "")
+            if content not in seen:
+                seen.add(content)
+                unique_memories.append(m)
+
+        return unique_memories[:n]
+
     # --- Memory Operations ---
 
     async def retrieve_memories(self, query: str, n: int = 3) -> List[Dict[str, Any]]:
