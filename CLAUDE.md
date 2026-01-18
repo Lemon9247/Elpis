@@ -62,6 +62,12 @@ Elpis/
 └── QUICKSTART.md               # Quick start guide
 ```
 
+## Python
+This project is written in Python. There is a uv-managed python venv in venv.
+You should always use this venv whenever you try to run Python. If you need to install
+a package into the venv, you should use uv pip install
+
+
 ## Key Entry Points
 
 - `elpis-server` - Inference MCP server with emotional modulation
