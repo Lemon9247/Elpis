@@ -293,6 +293,7 @@ class PsycheHTTPServer:
         Memory retrieval still happens for the latest user message.
         """
         # Clear existing context to avoid duplication
+        logger.info(f"Processing {len(messages)} messages from client")
         self.core.clear_context()
 
         # Process all messages except the last user message

@@ -225,19 +225,39 @@ When you need a tool, use this format and then STOP:
         memories = await self._memory.retrieve_relevant(content)
         memory_context = self._memory.format_memories_for_context(memories)
 
+        if memories:
+            logger.info(f"Retrieved {len(memories)} memories for: {content[:50]}...")
+        else:
+            logger.info(f"No memories found for: {content[:50]}...")
+
         # 2. Add memory context if we found relevant memories
         if memory_context:
+            logger.info(f"Injecting memory context ({len(memory_context)} chars)")
             compaction_result = self._context.add_message(
                 "system",
                 f"[Relevant memories]\n{memory_context}",
             )
             if compaction_result:
+                logger.warning(
+                    f"Compaction triggered after memory injection! "
+                    f"Removed {len(compaction_result.messages_removed)} messages"
+                )
                 await self._handle_compaction(compaction_result)
 
         # 3. Add user message to context
         compaction_result = self._context.add_message("user", content)
         if compaction_result:
+            logger.warning(
+                f"Compaction triggered after user message! "
+                f"Removed {len(compaction_result.messages_removed)} messages"
+            )
             await self._handle_compaction(compaction_result)
+
+        # Log context state
+        logger.info(
+            f"Context state: {self._context.total_tokens} tokens, "
+            f"{len(self._context.messages)} messages"
+        )
 
         return memory_context
 

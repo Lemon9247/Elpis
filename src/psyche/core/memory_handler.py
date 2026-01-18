@@ -96,16 +96,21 @@ class MemoryHandler:
             n = self.config.auto_retrieval_count
 
         if not self.is_mnemosyne_available:
+            logger.info("Memory retrieval skipped: Mnemosyne not available")
             return []
 
         try:
+            logger.info(f"Searching memories for: {query[:50]}...")
             memories = await self.mnemosyne_client.search_memories(query, n_results=n)
 
             if not memories:
-                logger.debug("No relevant memories found")
+                logger.info("No relevant memories found in Mnemosyne")
                 return []
 
-            logger.debug(f"Retrieved {len(memories)} relevant memories")
+            logger.info(f"Retrieved {len(memories)} memories from Mnemosyne")
+            for i, mem in enumerate(memories[:3]):  # Log first 3
+                summary = mem.get("summary", mem.get("content", ""))[:80]
+                logger.info(f"  Memory {i+1}: {summary}...")
             return memories
 
         except Exception as e:
