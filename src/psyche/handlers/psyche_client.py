@@ -388,6 +388,10 @@ class RemotePsycheClient(PsycheClient):
         self._cached_status: Dict[str, Any] = {}
         self._mnemosyne_available: bool = False
 
+        # Tool call state from last response
+        self._last_tool_calls: Optional[List[Dict[str, Any]]] = None
+        self._last_finish_reason: Optional[str] = None
+
     async def connect(self) -> None:
         """Establish connection to the server."""
         import aiohttp
@@ -521,6 +525,10 @@ class RemotePsycheClient(PsycheClient):
         """Stream a response token by token."""
         import json
 
+        # Reset tool call state
+        self._last_tool_calls = None
+        self._last_finish_reason = None
+
         async with await self._chat_request(
             self._messages,
             stream=True,
@@ -544,21 +552,44 @@ class RemotePsycheClient(PsycheClient):
 
                 try:
                     chunk = json.loads(data_str)
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    token = delta.get("content", "")
+                    choice = chunk.get("choices", [{}])[0]
+                    delta = choice.get("delta", {})
 
+                    # Check for content token
+                    token = delta.get("content", "")
                     if token:
                         full_content += token
                         if on_token:
                             on_token(token)
                         yield token
 
+                    # Check for finish reason and tool_calls
+                    finish_reason = choice.get("finish_reason")
+                    if finish_reason:
+                        self._last_finish_reason = finish_reason
+                        # Tool calls come in the delta on the finish chunk
+                        if "tool_calls" in delta:
+                            self._last_tool_calls = delta["tool_calls"]
+
                 except json.JSONDecodeError:
                     continue
 
-            # Add complete response to history
-            if full_content:
+            # Add complete response to history (only if no tool calls)
+            # When there are tool calls, Hermes handles adding to history
+            if full_content and not self._last_tool_calls:
                 self._messages.append({"role": "assistant", "content": full_content})
+
+    def get_pending_tool_calls(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get tool_calls from the last streamed response, if any.
+
+        Returns:
+            List of tool call dictionaries if finish_reason was "tool_calls",
+            None otherwise.
+        """
+        if self._last_finish_reason == "tool_calls" and self._last_tool_calls:
+            return self._last_tool_calls
+        return None
 
     async def retrieve_memories(self, query: str, n: int = 3) -> List[Dict[str, Any]]:
         """Retrieve memories via server."""

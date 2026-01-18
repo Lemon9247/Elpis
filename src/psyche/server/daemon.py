@@ -162,6 +162,27 @@ class PsycheDaemon:
         mnemosyne: Optional[MnemosyneClient],
     ) -> None:
         """Initialize PsycheCore with connected clients."""
+        # Query Elpis for its capabilities to configure context correctly
+        try:
+            capabilities = await elpis.get_capabilities()
+            elpis_context_length = capabilities.get("context_length", 4096)
+            logger.info(f"Elpis context_length: {elpis_context_length}")
+
+            # Configure Psyche's context to fit within Elpis's window
+            # Leave room for response generation (reserve ~25% for output)
+            max_context = int(elpis_context_length * 0.75)
+            reserve = int(elpis_context_length * 0.20)
+
+            # Update the config's context settings
+            self.config.core.context.max_context_tokens = max_context
+            self.config.core.context.reserve_tokens = reserve
+            logger.info(
+                f"Context configured: max_tokens={max_context}, reserve={reserve}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to query Elpis capabilities: {e}")
+            logger.warning("Using default context settings")
+
         self.core = PsycheCore(
             elpis_client=elpis,
             mnemosyne_client=mnemosyne,

@@ -30,6 +30,13 @@ if TYPE_CHECKING:
     from psyche.server.daemon import PsycheDaemon
 
 
+# Memory tools that should be executed server-side
+MEMORY_TOOLS = {"recall_memory", "store_memory"}
+
+# Maximum characters for memory results to prevent context overflow
+MAX_MEMORY_RESULT_CHARS = 2000
+
+
 # --- OpenAI-compatible request/response models ---
 
 
@@ -318,48 +325,107 @@ class PsycheHTTPServer:
         request: ChatCompletionRequest,
         connection_id: str,
     ) -> ChatCompletionResponse:
-        """Generate non-streaming response."""
+        """Generate non-streaming response with internal memory tool execution."""
+        MAX_MEMORY_ITERATIONS = 5
+        accumulated_content = ""
+
         try:
-            result = await self.core.generate(
-                max_tokens=request.max_tokens or 2048,
-                temperature=request.temperature,
-            )
+            for iteration in range(MAX_MEMORY_ITERATIONS):
+                try:
+                    result = await self.core.generate(
+                        max_tokens=request.max_tokens or 2048,
+                        temperature=request.temperature,
+                    )
+                except RuntimeError as e:
+                    # Handle context overflow
+                    error_msg = str(e)
+                    if "exceed context" in error_msg.lower() or "context window" in error_msg.lower():
+                        logger.warning(f"Context overflow during memory tool loop: {e}")
+                        accumulated_content += "\n\n[Context limit reached - some memory results may be truncated]"
+                        message = ChatMessage(role="assistant", content=accumulated_content)
+                        return ChatCompletionResponse(
+                            id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                            created=int(time.time()),
+                            model=self.config.model_name,
+                            choices=[
+                                ChatCompletionChoice(index=0, message=message, finish_reason="stop")
+                            ],
+                            usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                        )
+                    else:
+                        raise
 
-            content = result["content"]
+                content = result["content"]
 
-            # Parse for tool calls if tools were provided
-            tool_calls = None
-            if request.tools:
-                tool_calls = self._parse_tool_calls(content)
-                if tool_calls:
-                    # Remove tool call from content
-                    content = self._strip_tool_calls(content)
+                # Parse for tool calls if tools were provided
+                tool_calls = None
+                if request.tools:
+                    tool_calls = self._parse_tool_calls(content)
+                    if tool_calls:
+                        content = self._strip_tool_calls(content)
 
-            # Build response
-            message = ChatMessage(
-                role="assistant",
-                content=content if content.strip() else None,
-                tool_calls=tool_calls,
-            )
+                accumulated_content += content
 
-            finish_reason = "tool_calls" if tool_calls else "stop"
+                if not tool_calls:
+                    # No tools - return final response
+                    message = ChatMessage(
+                        role="assistant",
+                        content=accumulated_content if accumulated_content.strip() else None,
+                    )
+                    return ChatCompletionResponse(
+                        id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                        created=int(time.time()),
+                        model=self.config.model_name,
+                        choices=[
+                            ChatCompletionChoice(
+                                index=0, message=message, finish_reason="stop"
+                            )
+                        ],
+                        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                    )
 
+                # Separate memory vs client tools
+                memory_calls, client_calls = self._separate_tool_calls(tool_calls)
+
+                if memory_calls:
+                    # Execute memory tools internally
+                    for tc in memory_calls:
+                        result_str = await self._execute_memory_tool(tc)
+                        self.core.add_tool_result(tc["function"]["name"], result_str)
+                    # If there are also client tools, return them
+                    # Otherwise continue loop to generate follow-up
+
+                if client_calls:
+                    # Return client tools for execution
+                    message = ChatMessage(
+                        role="assistant",
+                        content=accumulated_content if accumulated_content.strip() else None,
+                        tool_calls=client_calls,
+                    )
+                    return ChatCompletionResponse(
+                        id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                        created=int(time.time()),
+                        model=self.config.model_name,
+                        choices=[
+                            ChatCompletionChoice(
+                                index=0, message=message, finish_reason="tool_calls"
+                            )
+                        ],
+                        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                    )
+
+                # Only memory tools - continue loop
+
+            # Max iterations reached
+            message = ChatMessage(role="assistant", content=accumulated_content)
             return ChatCompletionResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
                 created=int(time.time()),
                 model=self.config.model_name,
                 choices=[
-                    ChatCompletionChoice(
-                        index=0,
-                        message=message,
-                        finish_reason=finish_reason,
-                    )
+                    ChatCompletionChoice(index=0, message=message, finish_reason="stop")
                 ],
-                usage=Usage(
-                    prompt_tokens=0,  # Would need tokenizer to calculate
-                    completion_tokens=0,
-                    total_tokens=0,
-                ),
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
             )
 
         finally:
@@ -370,61 +436,128 @@ class PsycheHTTPServer:
         request: ChatCompletionRequest,
         connection_id: str,
     ) -> AsyncIterator[str]:
-        """Generate streaming response via SSE."""
+        """Generate streaming response with internal memory tool execution."""
+        MAX_MEMORY_ITERATIONS = 5
         response_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created = int(time.time())
 
         try:
-            # Collect full response for tool call parsing
-            full_content = ""
+            for iteration in range(MAX_MEMORY_ITERATIONS):
+                full_content = ""
 
-            async for token in self.core.generate_stream(
-                max_tokens=request.max_tokens or 2048,
-                temperature=request.temperature,
-            ):
-                full_content += token
+                # Stream tokens (with error handling for context overflow)
+                try:
+                    async for token in self.core.generate_stream(
+                        max_tokens=request.max_tokens or 2048,
+                        temperature=request.temperature,
+                    ):
+                        full_content += token
 
-                chunk = {
-                    "id": response_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": self.config.model_name,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": token},
-                            "finish_reason": None,
+                        chunk = {
+                            "id": response_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": self.config.model_name,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": token},
+                                    "finish_reason": None,
+                                }
+                            ],
                         }
-                    ],
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                await asyncio.sleep(0)  # Yield control
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                        await asyncio.sleep(0)
+                except RuntimeError as e:
+                    # Handle context overflow - stream error message and finish
+                    error_msg = str(e)
+                    if "exceed context" in error_msg.lower() or "context window" in error_msg.lower():
+                        logger.warning(f"Context overflow during memory tool loop: {e}")
+                        error_content = "\n\n[Context limit reached - some memory results may be truncated]"
+                        chunk = {
+                            "id": response_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": self.config.model_name,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": error_content},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                        # Send finish and done
+                        finish_chunk = {
+                            "id": response_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": self.config.model_name,
+                            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                        }
+                        yield f"data: {json.dumps(finish_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    else:
+                        raise  # Re-raise non-context errors
 
-            # Check for tool calls at end
-            tool_calls = None
-            if request.tools:
-                tool_calls = self._parse_tool_calls(full_content)
+                # Check for tool calls
+                tool_calls = None
+                if request.tools:
+                    tool_calls = self._parse_tool_calls(full_content)
 
-            # Send finish chunk
-            finish_reason = "tool_calls" if tool_calls else "stop"
+                if not tool_calls:
+                    # No tools - send finish and done
+                    finish_chunk = {
+                        "id": response_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": self.config.model_name,
+                        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    }
+                    yield f"data: {json.dumps(finish_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # Separate memory vs client tools
+                memory_calls, client_calls = self._separate_tool_calls(tool_calls)
+
+                if memory_calls:
+                    # Execute memory tools internally (silent - no streaming for this)
+                    for tc in memory_calls:
+                        result_str = await self._execute_memory_tool(tc)
+                        self.core.add_tool_result(tc["function"]["name"], result_str)
+
+                if client_calls:
+                    # Return client tools to client
+                    finish_chunk = {
+                        "id": response_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": self.config.model_name,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"tool_calls": client_calls},
+                                "finish_reason": "tool_calls",
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(finish_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # Only memory tools - loop continues, will generate follow-up response
+
+            # Max iterations - finish normally
             finish_chunk = {
                 "id": response_id,
                 "object": "chat.completion.chunk",
                 "created": created,
                 "model": self.config.model_name,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {},
-                        "finish_reason": finish_reason,
-                    }
-                ],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             }
-
-            # If there are tool calls, include them in final chunk
-            if tool_calls:
-                finish_chunk["choices"][0]["delta"]["tool_calls"] = tool_calls
-
             yield f"data: {json.dumps(finish_chunk)}\n\n"
             yield "data: [DONE]\n\n"
 
@@ -470,6 +603,53 @@ class PsycheHTTPServer:
         import re
 
         return re.sub(r"```tool_call\s*\n?.*?\n?```", "", content, flags=re.DOTALL).strip()
+
+    async def _execute_memory_tool(self, tool_call: Dict[str, Any]) -> str:
+        """Execute a memory tool internally and return the result as JSON."""
+        func = tool_call.get("function", {})
+        name = func.get("name")
+        args_str = func.get("arguments", "{}")
+
+        try:
+            args = json.loads(args_str)
+        except json.JSONDecodeError:
+            return json.dumps({"success": False, "error": "Invalid arguments"})
+
+        if name == "recall_memory":
+            query = args.get("query", "")
+            n_results = args.get("n_results", 5)
+            memories = await self.core.retrieve_memories(query, n_results)
+            return json.dumps({"memories": memories})
+
+        elif name == "store_memory":
+            content = args.get("content", "")
+            summary = args.get("summary")
+            memory_type = args.get("memory_type", "episodic")
+            tags = args.get("tags", [])
+
+            # Use core's store_memory method
+            success = await self.core.store_memory(
+                content=content,
+                importance=0.7,  # Default importance for explicit stores
+                tags=tags,
+            )
+            return json.dumps({"success": success})
+
+        return json.dumps({"success": False, "error": f"Unknown memory tool: {name}"})
+
+    def _separate_tool_calls(
+        self, tool_calls: List[Dict[str, Any]]
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Separate memory tools from client tools."""
+        memory_calls = []
+        client_calls = []
+        for tc in tool_calls:
+            name = tc.get("function", {}).get("name", "")
+            if name in MEMORY_TOOLS:
+                memory_calls.append(tc)
+            else:
+                client_calls.append(tc)
+        return memory_calls, client_calls
 
     @property
     def connection_count(self) -> int:

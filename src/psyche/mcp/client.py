@@ -341,6 +341,15 @@ class ElpisClient:
         result = await self._call_tool("get_emotion", {})
         return EmotionalState.from_dict(result)
 
+    async def get_capabilities(self) -> Dict[str, Any]:
+        """
+        Get server capabilities including context window size.
+
+        Returns:
+            Dictionary with context_length, max_tokens, backend, etc.
+        """
+        return await self._call_tool("get_capabilities", {})
+
     async def read_resource(self, uri: str) -> str:
         """
         Read a resource from the server.

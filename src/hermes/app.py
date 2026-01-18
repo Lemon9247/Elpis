@@ -26,6 +26,7 @@ from hermes.widgets.sidebar import StatusDisplay
 from hermes.commands import get_command, format_help_text, format_shortcut_help, format_startup_hint
 from psyche.handlers import PsycheClient, ReactHandler
 from psyche.handlers import IdleHandler, ThoughtEvent
+from psyche.tools.tool_engine import ToolEngine
 
 if TYPE_CHECKING:
     from psyche.mcp.client import ElpisClient, MnemosyneClient
@@ -72,6 +73,7 @@ class Hermes(App):
         idle_handler: Optional[IdleHandler] = None,
         elpis_client: Optional["ElpisClient"] = None,
         mnemosyne_client: Optional["MnemosyneClient"] = None,
+        tool_engine: Optional[ToolEngine] = None,
         *args,
         **kwargs,
     ):
@@ -84,6 +86,7 @@ class Hermes(App):
             idle_handler: IdleHandler for idle thinking
             elpis_client: ElpisClient for inference
             mnemosyne_client: MnemosyneClient for memory (optional)
+            tool_engine: ToolEngine for local tool execution (remote mode)
         """
         super().__init__(*args, **kwargs)
 
@@ -92,6 +95,7 @@ class Hermes(App):
         self._idle_handler = idle_handler
         self._elpis_client = elpis_client
         self._mnemosyne_client = mnemosyne_client
+        self._tool_engine = tool_engine
 
         # Application state
         self._state = AppState.IDLE
@@ -392,30 +396,71 @@ class Hermes(App):
             self._state = AppState.IDLE
 
     async def _process_via_client(self, text: str) -> None:
-        """Process input via remote client (remote mode)."""
+        """Process input via remote client with tool execution loop."""
+        import json
+
+        MAX_ITERATIONS = 10
         chat = self.query_one("#chat", ChatView)
 
-        # Add user message to client
+        # Add user message to client history
         await self._client.add_user_message(text)
 
-        # Start streaming response
-        chat.start_stream()
+        for iteration in range(MAX_ITERATIONS):
+            # Stream response and display
+            chat.start_stream()
+            full_response = ""
 
-        full_response = ""
-        try:
-            async for token in self._client.generate_stream():
-                full_response += token
-                chat.append_token(token)
+            try:
+                async for token in self._client.generate_stream():
+                    full_response += token
+                    chat.append_token(token)
+            except Exception as e:
+                chat.end_stream()
+                raise
 
-            # Finalize the message
             chat.end_stream()
 
-            # Add response to client history
-            await self._client.add_assistant_message(full_response, user_message=text)
+            # Check for tool calls
+            tool_calls = self._client.get_pending_tool_calls()
 
-        except Exception as e:
-            chat.end_stream()
-            raise
+            if not tool_calls or not self._tool_engine:
+                # No tools to execute - add response to history and we're done
+                if full_response:
+                    await self._client.add_assistant_message(full_response, user_message=text)
+                break
+
+            # Add assistant message with tool calls to history
+            # (The server expects the full conversation history including the tool-calling message)
+            if full_response:
+                await self._client.add_assistant_message(full_response, user_message=text)
+
+            # Execute each tool locally
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                name = func.get("name", "unknown")
+                args_str = func.get("arguments", "{}")
+
+                try:
+                    args = json.loads(args_str)
+                except json.JSONDecodeError:
+                    args = {}
+
+                # UI: show tool start
+                self._on_tool_call(name, args, None)
+
+                # Execute tool
+                try:
+                    result = await self._tool_engine.execute_tool_call(tc)
+                except Exception as e:
+                    result = {"success": False, "error": str(e)}
+
+                # UI: show tool complete
+                self._on_tool_call(name, args, result)
+
+                # Send result back to server
+                self._client.add_tool_result(name, json.dumps(result))
+
+            # Loop continues - server will generate next response with tool results
 
     async def _handle_command(self, command: str) -> None:
         """Handle slash commands."""

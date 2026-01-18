@@ -141,10 +141,12 @@ def main(
     mnemosyne_cmd = None if mnemosyne_command.lower() == "none" else mnemosyne_command
 
     # Build configuration
+    # Note: These context defaults are overridden after connecting to Elpis
+    # by querying its actual context_length (see daemon._init_core_with_clients)
     core_config = CoreConfig(
         context=ContextConfig(
-            max_context_tokens=24000,
-            reserve_tokens=4000,
+            max_context_tokens=3000,  # Conservative fallback
+            reserve_tokens=800,
             checkpoint_interval=20,
         ),
         memory=MemoryHandlerConfig(

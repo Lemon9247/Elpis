@@ -218,10 +218,13 @@ def _run_local_mode(
         logger.info(f"Mnemosyne client configured: {mnemosyne_command}")
 
     # --- Create PsycheCore (memory coordination layer) ---
+    # TODO: Query Elpis capabilities after connecting to get actual context_length
+    # For now, use conservative defaults matching Elpis's default 4096 context
+    # (75% for context, 20% reserve for response)
     core_config = CoreConfig(
         context=ContextConfig(
-            max_context_tokens=24000,
-            reserve_tokens=4000,
+            max_context_tokens=3000,
+            reserve_tokens=800,
             checkpoint_interval=20,
         ),
         memory=MemoryHandlerConfig(
@@ -408,6 +411,7 @@ def _run_remote_mode(
         idle_handler=None,  # No idle in remote mode
         elpis_client=None,  # Not available in remote mode
         mnemosyne_client=None,
+        tool_engine=tool_engine,  # For local tool execution
     )
 
     # Signal handler
