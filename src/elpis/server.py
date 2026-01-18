@@ -1,4 +1,24 @@
-"""MCP server entry point for Elpis emotional inference."""
+"""
+Elpis MCP Server - Emotional inference engine.
+
+Provides LLM inference with emotional modulation via:
+- Valence-arousal emotional state model
+- Sampling parameter modulation (temperature, top_p)
+- Steering vectors (transformers backend, experimental)
+- Homeostatic regulation with decay toward baseline
+
+MCP Tools:
+- generate: Text generation with emotional modulation
+- generate_stream: Streaming generation (start/poll/stop)
+- set_emotion: Directly set emotional state
+- process_event: Update emotion via events (success, failure, etc.)
+- get_emotion: Query current emotional state
+- get_capabilities: Query model context length and configuration
+
+Backends:
+- llama-cpp: GGUF models, sampling parameter modulation
+- transformers: HuggingFace models, steering vector support
+"""
 
 import asyncio
 import json

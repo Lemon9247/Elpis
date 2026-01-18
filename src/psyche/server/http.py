@@ -1,14 +1,19 @@
 """
-HTTP Server - OpenAI-compatible API for Psyche.
+Psyche HTTP Server - OpenAI-compatible API for remote access.
 
-Provides /v1/chat/completions endpoint that external agents
-(Aider, OpenCode, Continue, etc.) can connect to.
+Provides /v1/chat/completions endpoint for external agents
+(Hermes remote mode, Aider, OpenCode, Continue, etc.).
 
 Key behaviors:
-- Accepts tool definitions from client (client owns tools)
-- Returns tool_calls in response, does NOT execute
-- Supports streaming via SSE
+- Memory tools (recall_memory, store_memory) execute server-side
+- File/bash/search tool_calls returned to client for local execution
+- Supports streaming via Server-Sent Events (SSE)
 - Tracks connections for dream scheduling
+
+Tool Architecture:
+- Memory tools execute server-side because memory is part of Psyche's "self"
+- File/bash/search tools return to client because they need local filesystem access
+- Client implements tool execution loop with max 10 iterations
 """
 
 from __future__ import annotations

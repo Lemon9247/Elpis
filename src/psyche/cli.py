@@ -1,13 +1,21 @@
 """
-Command-line interface for Psyche server.
+Psyche Server CLI - Persistent AI substrate with memory.
 
 Launches the Psyche server daemon which provides:
 - HTTP endpoint at /v1/chat/completions (OpenAI-compatible)
-- MCP server for Psyche-aware clients
-- Automatic memory management
+- Server-side memory tool execution (recall_memory, store_memory)
+- Context window synchronization with Elpis
 - Dream state when no clients connected
 
+Usage:
+    psyche-server                    # Start server on localhost:8741
+    psyche-server --port 8080        # Custom port
+    psyche-server --debug            # Enable debug logging
+
+The server spawns Elpis and Mnemosyne as MCP subprocesses.
+
 For the TUI client, use the `hermes` command instead.
+For remote TUI access, use `hermes --server http://localhost:8741`.
 """
 
 from __future__ import annotations

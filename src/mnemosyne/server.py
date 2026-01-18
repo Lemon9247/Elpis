@@ -1,4 +1,25 @@
-"""MCP server for memory management."""
+"""
+Mnemosyne MCP Server - Semantic memory with consolidation.
+
+Provides memory storage and retrieval via ChromaDB with:
+- Short-term and long-term memory stores
+- Semantic search via sentence-transformers embeddings
+- Memory consolidation (clustering similar memories)
+- Emotional context tracking (valence, arousal, quadrant)
+
+Memory types:
+- episodic: Specific events and conversations
+- semantic: General knowledge and facts
+- procedural: How-to knowledge
+- emotional: Emotional associations
+
+MCP Tools:
+- store_memory: Store new memories with metadata
+- search_memories: Semantic search across memories
+- get_memory: Retrieve specific memory by ID
+- consolidate_memories: Trigger clustering and promotion
+- get_memory_stats: Database statistics
+"""
 
 import asyncio
 import json

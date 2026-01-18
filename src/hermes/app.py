@@ -1,4 +1,26 @@
-"""Hermes TUI Application built with Textual."""
+"""
+Hermes TUI Application - Terminal interface for Psyche.
+
+A Textual-based terminal UI for interacting with Psyche. Supports two modes:
+
+Local Mode (default):
+- Spawns Elpis and Mnemosyne as MCP subprocesses
+- Runs ReactHandler and IdleHandler locally
+- Full tool execution in the same process
+
+Remote Mode (--server):
+- Connects to a running Psyche server via HTTP
+- Executes file/bash/search tools locally
+- Memory tools execute server-side
+- Tool execution loop with max 10 iterations
+
+Features:
+- Streaming responses with chat view
+- Tool activity display with approval workflow
+- Emotional state tracking (valence-arousal)
+- Idle thoughts during silence
+- Slash commands (/help, /status, /emotion, etc.)
+"""
 
 import asyncio
 import time

@@ -1,4 +1,22 @@
-"""Command-line interface for Hermes TUI."""
+"""
+Hermes CLI - Command-line entry point for the TUI client.
+
+Usage:
+    hermes                          # Local mode (spawns servers)
+    hermes --server URL             # Remote mode (connect to Psyche server)
+    hermes --debug                  # Enable debug logging
+
+Local Mode:
+- Spawns elpis-server and mnemosyne-server as MCP subprocesses
+- Manages full lifecycle of PsycheCore, ReactHandler, IdleHandler
+- All tools execute locally
+
+Remote Mode:
+- Connects to running psyche-server via HTTP API
+- File/bash/search tools execute locally
+- Memory tools execute server-side
+- Server manages memory and dreaming
+"""
 
 import asyncio
 import signal

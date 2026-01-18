@@ -6,11 +6,16 @@ This is the core of the Psyche substrate. It coordinates:
 - Memory handling (long-term storage via Mnemosyne)
 - Elpis inference (emotionally-modulated LLM)
 - Importance scoring for auto-storage
+- Dream generation (memory-based introspection)
+
+Used by:
+- Hermes (local mode): Instantiated directly
+- Psyche server (remote mode): Wrapped by PsycheDaemon
 
 PsycheCore does NOT:
-- Execute tools (that's the agent's job)
-- Run ReAct loops (that's the agent's job)
-- Handle UI (that's the client's job)
+- Execute tools (that's ReactHandler's job)
+- Run ReAct loops (that's ReactHandler's job)
+- Handle UI (that's Hermes's job)
 """
 
 from __future__ import annotations

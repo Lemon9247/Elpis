@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 project = "Elpis"
 copyright = f"{datetime.now().year}, Willow Sparks"
 author = "Willow Sparks"
-release = "1.0.0"
+release = "2.0.0"
 
 # -- General configuration ---------------------------------------------------
 
