@@ -183,25 +183,39 @@ def main(
     signal.signal(signal.SIGINT, signal_handler)
 
     # Print startup message
-    print(f"Psyche Server starting on http://{host}:{port}")
-    print(f"  Model: {model_name}")
-    print(f"  Elpis: {elpis_command}")
-    print(f"  Mnemosyne: {mnemosyne_cmd or 'disabled'}")
-    print(f"  Dreaming: {'enabled' if dream else 'disabled'}")
     print()
-    print("Press Ctrl+C to stop")
+    print("=" * 50)
+    print("  Psyche Server")
+    print("=" * 50)
+    print()
+    print(f"  URL:       http://{host}:{port}")
+    print(f"  Model:     {model_name}")
+    print(f"  Elpis:     {elpis_command}")
+    print(f"  Mnemosyne: {mnemosyne_cmd or 'disabled'}")
+    print(f"  Dreaming:  {'enabled' if dream else 'disabled'}")
+    print()
+    print("-" * 50)
+    print("  Press Ctrl+C to shutdown gracefully")
+    print("  (memories will be consolidated on shutdown)")
+    print("-" * 50)
     print()
 
     # Run
     try:
         loop.run_until_complete(daemon.start())
     except KeyboardInterrupt:
-        logger.info("Interrupted by user")
+        pass  # Handle gracefully below
     except Exception as e:
         logger.exception(f"Server error: {e}")
         sys.exit(1)
     finally:
+        print()
+        print("Shutting down Psyche...")
+        print("  Consolidating memories...")
         loop.run_until_complete(daemon.shutdown())
+        print("  Memories consolidated.")
+        print("  Goodbye.")
+        print()
         loop.close()
 
 
