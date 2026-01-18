@@ -7,26 +7,40 @@ Elpis Documentation
 
 *Do robots dream of electric sheep?*
 
-Welcome to the Elpis documentation. Elpis is an MCP (Model Context Protocol) ecosystem
-for emotionally-aware AI inference, consisting of three integrated components:
+Welcome to the Elpis documentation. Elpis is a system for giving AI persistent
+memory and emotional state, consisting of four integrated components:
 
-**Elpis** - An MCP inference server with emotional regulation that modulates LLM
-generation based on a valence-arousal emotional model.
+**Elpis** - Inference MCP server with emotional modulation via valence-arousal model.
+Supports sampling parameter modulation and experimental steering vectors.
 
-**Mnemosyne** - A memory MCP server providing persistent vector-based memory storage
-using ChromaDB.
+**Mnemosyne** - Memory MCP server with ChromaDB backend. Provides semantic search,
+short/long-term memory stores, and clustering-based consolidation.
 
-**Psyche** - A TUI (Text User Interface) client that brings everything together with
-an interactive interface for working with the AI system.
+**Psyche** - Core library and HTTP server for memory coordination, tool execution,
+and dreaming. Can run as a standalone server for remote access.
+
+**Hermes** - TUI (Terminal User Interface) client built with Textual. Supports
+both local mode (spawns servers) and remote mode (connects to Psyche server).
 
 Features
 --------
 
-- Emotional regulation using valence-arousal model
-- Dual modulation approaches: sampling parameters or steering vectors
-- Persistent memory with semantic search
-- MCP-based architecture for modularity
-- Interactive TUI client with rich output
+- **Persistent Memory**: Semantic memory storage with automatic consolidation
+- **Emotional Regulation**: Valence-arousal model modulating LLM generation
+- **Local & Remote Modes**: Run everything locally or as a server for remote access
+- **Dreaming**: Memory-based introspection when no clients are connected
+- **Tool System**: File operations, bash execution, codebase search with safety controls
+- **MCP Architecture**: Modular design using Model Context Protocol
+
+Architecture
+------------
+
+**Local Mode** (default): Hermes spawns Elpis and Mnemosyne as MCP subprocesses,
+managing everything in a single terminal session.
+
+**Server Mode**: Psyche runs as a persistent HTTP server with OpenAI-compatible API.
+Hermes or other clients connect remotely. Memory tools execute server-side while
+file/bash tools execute client-side.
 
 Getting Started
 ---------------
@@ -51,6 +65,7 @@ Detailed documentation for each package:
    elpis/index
    mnemosyne/index
    psyche/index
+   hermes/index
 
 Indices and Tables
 ------------------

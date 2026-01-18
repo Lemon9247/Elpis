@@ -2,126 +2,169 @@
 Psyche
 ======
 
-Psyche is the interactive TUI (Terminal User Interface) and REPL client for the Elpis
-system. It provides a rich terminal-based interface for interacting with the Elpis
-inference server, featuring streaming responses, emotional state display, and
-continuous inference capabilities.
+Psyche is the core library and HTTP server for the Elpis system. It coordinates
+memory handling, context management, tool execution, and provides both local
+and remote operation modes.
 
 Overview
 --------
 
-Psyche serves as the user-facing client in the Elpis ecosystem, connecting to both
-the Elpis inference server and Mnemosyne memory server via MCP (Model Context Protocol)
-and providing:
+Psyche serves as the "mind" of the Elpis ecosystem, providing:
 
-- **Interactive TUI**: A rich terminal interface built with Textual, featuring
-  chat history, emotional state visualization, tool activity display, and
-  internal thought panels.
+- **PsycheCore**: Memory coordination layer managing context, memory retrieval,
+  and importance scoring for automatic storage.
 
-- **REPL Mode**: A command-line Read-Eval-Print Loop for simpler interactions
-  using prompt_toolkit with command history support.
+- **Handlers**: Specialized components for different operational modes:
 
-- **Continuous Inference**: Unlike traditional chatbots, Psyche maintains an
-  always-active thought process that generates idle reflections when not
-  processing user input.
+  - **ReactHandler**: Processes user input with ReAct (Reasoning + Acting) loops
+  - **IdleHandler**: Background processing during silence, triggers consolidation
+  - **DreamHandler**: Memory-based introspection when no clients connected
 
-- **Memory Consolidation**: Automatic memory consolidation during idle periods,
-  promoting important short-term memories to long-term storage via Mnemosyne.
+- **HTTP Server**: OpenAI-compatible API for remote access via ``psyche-server``
 
-- **Tool Integration**: A comprehensive tool system for file operations, bash
-  command execution, and codebase searching with safety controls.
+- **Tool System**: File operations, bash execution, and codebase search with
+  safety controls and approval workflows.
 
 Architecture
 ------------
 
-Psyche is organized into several key components:
+Psyche is organized into these key components:
 
-**Client Layer** (``psyche.client``)
-    The user interface components including the Textual-based TUI application,
-    REPL interface, and display management.
+**Core** (``psyche.core``)
+    The central coordination layer:
 
-**Memory Server** (``psyche.memory``)
-    The continuous inference server that manages conversation context, processes
-    user input, generates responses, and handles idle thinking. Includes context
-    compaction for managing token limits and automatic memory consolidation.
+    - ``PsycheCore``: Context management, memory handling, Elpis inference
+    - ``ContextManager``: Working memory buffer with token tracking
+    - ``MemoryHandler``: Long-term storage via Mnemosyne, retrieval, compaction
 
-**Tool Engine** (``psyche.tools``)
-    Async tool execution orchestrator with validated tool definitions and
-    implementations for file operations, bash execution, directory listing,
-    and codebase searching.
+**Handlers** (``psyche.handlers``)
+    Operational modes for different contexts:
+
+    - ``ReactHandler``: ReAct loop for user input processing
+    - ``IdleHandler``: Background processing during client silence
+    - ``DreamHandler``: Server-side dreaming when no clients connected
+    - ``PsycheClient``: Abstract client interface (local and remote implementations)
+
+**Server** (``psyche.server``)
+    HTTP server infrastructure for remote operation:
+
+    - ``PsycheDaemon``: Server lifecycle and MCP client management
+    - ``PsycheHTTPServer``: FastAPI server with OpenAI-compatible API
+
+**Tools** (``psyche.tools``)
+    Async tool execution with safety controls:
+
+    - ``ToolEngine``: Orchestrates tool execution with approval workflow
+    - Implementations: file ops, bash, directory listing, codebase search
 
 **MCP Clients** (``psyche.mcp``)
-    Clients for connecting to backend servers:
+    Clients for connecting to backend MCP servers:
 
     - ``ElpisClient``: Text generation with streaming and emotional modulation
     - ``MnemosyneClient``: Memory storage, search, and consolidation
 
+Local vs Remote Mode
+--------------------
+
+**Local Mode** (via Hermes):
+
+.. code-block:: text
+
+    Hermes
+      └── PsycheCore
+            ├── ReactHandler (processes user input)
+            ├── IdleHandler (background processing)
+            ├── ElpisClient (MCP subprocess)
+            └── MnemosyneClient (MCP subprocess)
+
+In local mode, Hermes instantiates PsycheCore directly and manages the full
+lifecycle including MCP server subprocesses.
+
+**Server Mode** (via psyche-server):
+
+.. code-block:: text
+
+    PsycheDaemon
+      ├── PsycheCore
+      │     ├── ElpisClient (MCP subprocess)
+      │     └── MnemosyneClient (MCP subprocess)
+      ├── PsycheHTTPServer (/v1/chat/completions)
+      └── DreamHandler (when no clients)
+
+In server mode, PsycheDaemon manages the HTTP server and dreams when idle.
+Memory tools execute server-side; file/bash tools return to the client.
+
 Key Features
 ------------
 
-Streaming Responses
-    Real-time token streaming enables immediate feedback as the AI generates
-    responses, providing a more responsive user experience.
+ReAct Loop
+    The ReactHandler implements a Reasoning + Acting loop allowing the LLM to:
 
-Emotional State Display
-    Visual representation of the inference server's emotional state (valence and
-    arousal) with quadrant classification (excited, calm, frustrated, depleted).
+    1. Think about the user's request
+    2. Optionally call tools to gather information
+    3. Continue reasoning with tool results
+    4. Repeat until a final response is ready
 
-Continuous Inference
-    Background idle thinking generates reflections and explorations during quiet
-    periods, with optional read-only tool access for workspace exploration.
+Memory Integration
+    PsycheCore automatically:
 
-Memory Consolidation
-    Automatic memory consolidation during idle periods. Psyche connects to Mnemosyne
-    and periodically checks if consolidation is recommended, then triggers clustering-
-    based promotion of important memories to long-term storage.
+    - Retrieves relevant memories before generating responses
+    - Scores message importance for automatic storage
+    - Compacts context when approaching token limits
+    - Stores compacted messages to long-term memory
 
-Context Management
-    Automatic context compaction keeps conversations within token limits using
-    sliding window or summarization strategies.
+Dreaming
+    When the server has no connected clients, DreamHandler:
 
-Tool System
-    Safe, sandboxed tool execution with Pydantic validation, timeout controls,
-    and path sanitization to prevent workspace escapes.
+    - Retrieves random memories for context
+    - Generates introspective content
+    - Potentially stores insights as new memories
+    - Runs on a configurable interval (default: 5 minutes)
+
+Tool Safety
+    The tool system provides:
+
+    - Pydantic validation for all tool inputs
+    - Path sanitization to prevent workspace escapes
+    - Configurable approval workflow (auto/ask/deny)
+    - Timeout controls for bash execution
 
 Quick Start
 -----------
 
-Launch Psyche from the command line:
+**Server Mode:**
 
 .. code-block:: bash
 
-    # Start the TUI client (with memory consolidation)
-    psyche
+   # Start the server
+   psyche-server
 
-    # With debug logging
-    psyche --debug
+   # With custom port
+   psyche-server --port 8080
 
-    # Specify workspace directory
-    psyche --workspace /path/to/project
+   # With debug logging
+   psyche-server --debug
 
-    # Disable memory consolidation
-    psyche --no-consolidation
+**Programmatic Usage:**
 
-    # Custom Mnemosyne server command
-    psyche --mnemosyne-command "mnemosyne-server --persist-dir ./custom/memory"
+.. code-block:: python
 
-Within the TUI, type messages and press Enter to interact. Use slash commands
-for control:
+   from psyche.core import PsycheCore, CoreConfig
+   from psyche.mcp.client import ElpisClient, MnemosyneClient
 
-- ``/help`` - Show available commands
-- ``/status`` - Display server status and context usage
-- ``/clear`` - Clear conversation context
-- ``/emotion`` - Show current emotional state
-- ``/thoughts on|off`` - Toggle internal thought display
-- ``/quit`` - Exit Psyche
+   async def main():
+       async with ElpisClient("elpis-server") as elpis:
+           async with MnemosyneClient("mnemosyne-server") as mnemosyne:
+               core = PsycheCore(
+                   config=CoreConfig(),
+                   elpis_client=elpis,
+                   mnemosyne_client=mnemosyne,
+               )
 
-Keyboard shortcuts:
-
-- ``Ctrl+C`` - Quit
-- ``Ctrl+L`` - Clear context
-- ``Ctrl+T`` - Toggle thought panel
-- ``Escape`` - Focus input
+               # Add a message and generate response
+               core.add_message("user", "Hello!")
+               async for token in core.generate_stream():
+                   print(token, end="", flush=True)
 
 .. toctree::
    :maxdepth: 2

@@ -3,97 +3,94 @@ Quickstart
 
 This guide will get you using Elpis in just a few minutes.
 
-Starting the Servers
---------------------
+Local Mode (Recommended)
+------------------------
 
-Elpis consists of multiple MCP servers that can be run independently
-or together.
-
-Elpis Inference Server
-^^^^^^^^^^^^^^^^^^^^^^
-
-The inference server provides LLM generation with emotional modulation:
+The easiest way to use Elpis is with Hermes in local mode. Hermes spawns
+all servers automatically:
 
 .. code-block:: bash
 
-   elpis-server
+   hermes
 
-By default, this starts the server using stdio transport for MCP
-communication. The server will load your configured model and be
-ready to accept requests.
+That's it! Hermes will:
 
-Mnemosyne Memory Server
-^^^^^^^^^^^^^^^^^^^^^^^
-
-The memory server provides persistent vector-based storage:
-
-.. code-block:: bash
-
-   mnemosyne-server
-
-This starts the ChromaDB-backed memory server, which stores and
-retrieves memories using semantic similarity.
-
-Running the Psyche Client
--------------------------
-
-The easiest way to use Elpis is through the Psyche TUI client, which
-manages the servers automatically:
-
-.. code-block:: bash
-
-   psyche
-
-Psyche will:
-
-1. Start elpis-server (inference) as a subprocess
-2. Start mnemosyne-server (memory) as a subprocess
+1. Start ``elpis-server`` (inference) as a subprocess
+2. Start ``mnemosyne-server`` (memory) as a subprocess
 3. Connect to both via MCP stdio transport
 4. Provide an interactive terminal interface
 
 .. note::
 
-   When using Psyche, you do NOT need to start any servers manually.
-   Psyche spawns them automatically as needed.
+   When using Hermes in local mode, you do NOT need to start any servers
+   manually. Hermes manages them automatically.
 
-Basic Usage Flow
-----------------
+Server Mode (Remote Access)
+---------------------------
 
-Once Psyche is running, you can interact with the AI system:
+For remote access or persistent server operation, run Psyche as a server:
 
-1. **Start a conversation** - Type your message and press Enter
+.. code-block:: bash
 
-2. **View emotional state** - The interface shows the current
-   valence-arousal state
+   # Terminal 1: Start the server
+   psyche-server
 
-3. **Use tools** - The AI can use tools for file operations, search,
-   and other tasks
+   # Terminal 2: Connect with Hermes
+   hermes --server http://localhost:8741
 
-4. **Memory persistence** - Important context is automatically stored
-   and recalled
+In server mode:
 
-Example Session
-^^^^^^^^^^^^^^^
+- Psyche manages memory and executes memory tools server-side
+- Hermes executes file/bash/search tools locally
+- Server dreams when no clients are connected
+- Multiple clients can connect (memories are shared)
 
-.. code-block:: text
+Direct API Access
+^^^^^^^^^^^^^^^^^
 
-   $ psyche
+The Psyche server exposes an OpenAI-compatible API:
 
-   Elpis Psyche Client v0.1.0
-   Connected to inference server
+.. code-block:: bash
 
-   You: Hello, how are you today?
+   curl http://localhost:8741/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{
+       "messages": [{"role": "user", "content": "Hello!"}],
+       "stream": true
+     }'
 
-   [Emotional State: valence=0.5, arousal=0.3]
+Basic Usage
+-----------
 
-   AI: I'm doing well, thank you for asking! I'm feeling
-   quite pleasant and calm at the moment. How can I help
-   you today?
+Once Hermes is running, you can interact with the AI:
+
+1. **Type messages** - Enter your message and press Enter
+2. **View emotional state** - The sidebar shows valence-arousal state
+3. **Use tools** - The AI can read/write files, run commands, search code
+4. **Memory persistence** - Important context is stored and recalled
+
+Slash Commands
+^^^^^^^^^^^^^^
+
+- ``/help`` - Show available commands
+- ``/status`` - Display server status and context usage
+- ``/clear`` - Clear conversation context
+- ``/emotion`` - Show current emotional state
+- ``/thoughts on|off`` - Toggle internal thought display
+- ``/quit`` - Exit Hermes
+
+Keyboard Shortcuts
+^^^^^^^^^^^^^^^^^^
+
+- ``Ctrl+C`` - Stop generation or quit (double-tap when idle)
+- ``Ctrl+L`` - Clear context
+- ``Ctrl+T`` - Toggle thought panel
+- ``Escape`` - Focus input
 
 Programmatic Usage
 ------------------
 
-You can also use Elpis components directly in Python:
+Use Elpis components directly in Python:
 
 .. code-block:: python
 
@@ -128,8 +125,6 @@ You can also use Elpis components directly in Python:
 Configuration
 -------------
 
-Elpis can be configured via YAML files or environment variables.
-
 Configuration File
 ^^^^^^^^^^^^^^^^^^
 
@@ -152,55 +147,37 @@ Create a ``config.yaml`` file:
 Environment Variables
 ^^^^^^^^^^^^^^^^^^^^^
 
-Use environment variables with the ``ELPIS_`` prefix:
+Use environment variables with nested ``__`` delimiter:
 
 .. code-block:: bash
 
+   # Elpis settings
    export ELPIS_MODEL__PATH=./data/models/model.gguf
-   export ELPIS_MODEL__CONTEXT_LENGTH=8192
-   export ELPIS_EMOTION__BASELINE_VALENCE=0.0
+   export ELPIS_MODEL__CONTEXT_LENGTH=16384
 
-MCP Tools
----------
+   # Or use a .env file
+   MODEL__CONTEXT_LENGTH=16384
 
-Elpis exposes these MCP tools:
+Running Individual Servers
+--------------------------
 
-.. list-table::
-   :header-rows: 1
-   :widths: 25 75
+You can run servers independently if needed:
 
-   * - Tool
-     - Description
-   * - ``generate``
-     - Text generation with emotional modulation
-   * - ``function_call``
-     - Tool/function call generation
-   * - ``update_emotion``
-     - Trigger an emotional event
-   * - ``reset_emotion``
-     - Reset to baseline state
-   * - ``get_emotion``
-     - Get current emotional state
+.. code-block:: bash
 
-MCP Resources
--------------
+   # Inference server only
+   elpis-server
 
-Available MCP resources:
+   # Memory server only
+   mnemosyne-server
 
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - Resource URI
-     - Description
-   * - ``emotion://state``
-     - Current valence-arousal state
-   * - ``emotion://events``
-     - Available emotional event types
+   # Psyche server (spawns Elpis and Mnemosyne)
+   psyche-server --port 8741
 
 Next Steps
 ----------
 
-- Learn about :doc:`../elpis/index` for inference details
+- Learn about :doc:`../elpis/index` for inference and emotion details
 - Explore :doc:`../mnemosyne/index` for memory capabilities
-- See :doc:`../psyche/index` for client features
+- See :doc:`../psyche/index` for core library features
+- Read :doc:`../hermes/index` for TUI client details

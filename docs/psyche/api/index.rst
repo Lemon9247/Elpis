@@ -8,7 +8,8 @@ This section provides detailed API documentation for all Psyche modules.
    :maxdepth: 2
    :caption: Modules
 
-   client
-   memory
+   core
+   handlers
+   server
    tools
    mcp
