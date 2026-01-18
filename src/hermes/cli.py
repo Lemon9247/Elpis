@@ -354,25 +354,25 @@ def _run_remote_mode(
 
     logger.info(f"Connecting to Psyche server at {server_url}...")
 
-    # --- Create remote client ---
-    client = RemotePsycheClient(base_url=server_url)
-
-    # Connect synchronously before starting TUI
-    async def connect():
-        await client.connect()
+    # Verify server is reachable with a simple sync check
+    # (Don't use aiohttp here - it would bind to wrong event loop)
+    import urllib.request
+    import urllib.error
 
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(connect())
-        loop.close()
-    except Exception as e:
+        health_url = f"{server_url.rstrip('/')}/health"
+        with urllib.request.urlopen(health_url, timeout=5) as resp:
+            if resp.status != 200:
+                raise ConnectionError(f"Server returned {resp.status}")
+        logger.info("Server health check passed")
+    except (urllib.error.URLError, ConnectionError) as e:
         logger.error(f"Failed to connect to server: {e}")
         print(f"Error: Cannot connect to Psyche server at {server_url}")
-        print(f"Make sure the server is running: psyche-server --port {server_url.split(':')[-1]}")
+        print("Make sure the server is running: psyche-server")
         sys.exit(1)
 
-    logger.info("Connected to Psyche server")
+    # --- Create remote client (connects lazily inside Textual's event loop) ---
+    client = RemotePsycheClient(base_url=server_url)
 
     # --- Create ToolEngine (tools run locally) ---
     tool_engine = ToolEngine(
