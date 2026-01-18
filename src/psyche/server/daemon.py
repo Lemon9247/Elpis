@@ -123,13 +123,14 @@ class PsycheDaemon:
                         f"Psyche server running at http://{self.config.http_host}:{self.config.http_port}"
                     )
 
-                    await self._run_server()
+                    try:
+                        await self._run_server()
+                    finally:
+                        # Shutdown BEFORE context managers exit (while Elpis/Mnemosyne still connected)
+                        await self.shutdown()
 
         except Exception as e:
             logger.error(f"Failed to start daemon: {e}")
-            raise
-        finally:
-            await self.shutdown()
 
     @asynccontextmanager
     async def _connect_elpis(self) -> AsyncIterator[ElpisClient]:
@@ -271,7 +272,11 @@ class PsycheDaemon:
         return self.dream_handler is not None and self.dream_handler.is_dreaming
 
     async def shutdown(self) -> None:
-        """Graceful shutdown."""
+        """Graceful shutdown with memory consolidation."""
+        if not self._running:
+            return  # Already shut down
+
+        print("Shutting down Psyche...")
         logger.info("Shutting down Psyche daemon...")
         self._running = False
 
@@ -280,10 +285,13 @@ class PsycheDaemon:
 
         # Shutdown core (consolidate memories)
         if self.core:
+            print("  Consolidating memories...")
             try:
                 await self.core.shutdown()
+                print("  Memories consolidated.")
             except Exception as e:
                 logger.error(f"Error during core shutdown: {e}")
+                print(f"  Warning: Memory consolidation failed: {e}")
 
         # Signal shutdown
         self._shutdown_event.set()

@@ -202,21 +202,18 @@ def main(
 
     # Run
     try:
+        print()
         loop.run_until_complete(daemon.start())
     except KeyboardInterrupt:
-        pass  # Handle gracefully below
+        pass  # Shutdown already handled inside daemon.start()
     except Exception as e:
         logger.exception(f"Server error: {e}")
         sys.exit(1)
     finally:
-        print()
-        print("Shutting down Psyche...")
-        print("  Consolidating memories...")
-        loop.run_until_complete(daemon.shutdown())
-        print("  Memories consolidated.")
-        print("  Goodbye.")
-        print()
         loop.close()
+        print()
+        print("Goodbye.")
+        print()
 
 
 if __name__ == "__main__":
