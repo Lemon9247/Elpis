@@ -356,11 +356,7 @@ class Hermes(App):
             await self._process_user_input(message.value)
 
     async def _process_user_input(self, text: str) -> None:
-        """Process user input through ReactHandler."""
-        if not self._react_handler:
-            logger.error("ReactHandler not configured")
-            return
-
+        """Process user input through ReactHandler or client directly."""
         # Record user interaction for idle timing
         if self._idle_handler:
             self._idle_handler.record_user_interaction()
@@ -372,19 +368,54 @@ class Hermes(App):
         self._state = AppState.PROCESSING
 
         try:
-            await self._react_handler.process_input(
-                text,
-                on_token=self._on_token,
-                on_tool_call=self._on_tool_call,
-                on_response=self._on_response,
-                on_thought=self._on_thought,
-            )
+            if self._react_handler:
+                # Local mode: use ReactHandler
+                await self._react_handler.process_input(
+                    text,
+                    on_token=self._on_token,
+                    on_tool_call=self._on_tool_call,
+                    on_response=self._on_response,
+                    on_thought=self._on_thought,
+                )
+            elif self._client:
+                # Remote mode: use client directly
+                await self._process_via_client(text)
+            else:
+                logger.error("No handler or client configured")
+                chat = self.query_one("#chat", ChatView)
+                chat.add_system_message("[Error: Not connected]")
         except Exception as e:
             logger.error(f"Error processing input: {e}")
             chat = self.query_one("#chat", ChatView)
             chat.add_system_message(f"[Error: {e}]")
         finally:
             self._state = AppState.IDLE
+
+    async def _process_via_client(self, text: str) -> None:
+        """Process input via remote client (remote mode)."""
+        chat = self.query_one("#chat", ChatView)
+
+        # Add user message to client
+        await self._client.add_user_message(text)
+
+        # Start streaming response
+        chat.start_assistant_message()
+
+        full_response = ""
+        try:
+            async for token in self._client.generate_stream():
+                full_response += token
+                chat.append_to_assistant(token)
+
+            # Finalize the message
+            chat.finalize_assistant_message()
+
+            # Add response to client history
+            await self._client.add_assistant_message(full_response, user_message=text)
+
+        except Exception as e:
+            chat.finalize_assistant_message()
+            raise
 
     async def _handle_command(self, command: str) -> None:
         """Handle slash commands."""
