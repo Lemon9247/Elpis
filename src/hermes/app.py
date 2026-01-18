@@ -399,22 +399,22 @@ class Hermes(App):
         await self._client.add_user_message(text)
 
         # Start streaming response
-        chat.start_assistant_message()
+        chat.start_stream()
 
         full_response = ""
         try:
             async for token in self._client.generate_stream():
                 full_response += token
-                chat.append_to_assistant(token)
+                chat.append_token(token)
 
             # Finalize the message
-            chat.finalize_assistant_message()
+            chat.end_stream()
 
             # Add response to client history
             await self._client.add_assistant_message(full_response, user_message=text)
 
         except Exception as e:
-            chat.finalize_assistant_message()
+            chat.end_stream()
             raise
 
     async def _handle_command(self, command: str) -> None:
