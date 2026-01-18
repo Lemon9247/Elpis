@@ -276,16 +276,42 @@ class PsycheHTTPServer:
         return "\n".join(lines)
 
     async def _process_messages(self, messages: List[ChatMessage]) -> None:
-        """Process incoming messages into context."""
-        for msg in messages:
-            if msg.role == "user" and msg.content:
-                await self.core.add_user_message(msg.content)
+        """
+        Process incoming messages into context.
+
+        The OpenAI API pattern is stateless - the client sends the full
+        message history each time. We clear the context and rebuild it
+        from the provided messages to match this pattern.
+
+        Memory retrieval still happens for the latest user message.
+        """
+        # Clear existing context to avoid duplication
+        self.core.clear_context()
+
+        # Process all messages except the last user message
+        # (which gets special handling for memory retrieval)
+        last_user_idx = -1
+        for i, msg in enumerate(messages):
+            if msg.role == "user":
+                last_user_idx = i
+
+        for i, msg in enumerate(messages):
+            if msg.role == "system":
+                # Skip system messages - PsycheCore has its own system prompt
+                continue
+            elif msg.role == "user" and msg.content:
+                if i == last_user_idx:
+                    # Last user message - use add_user_message for memory retrieval
+                    await self.core.add_user_message(msg.content)
+                else:
+                    # Historical user message - add directly to context
+                    self.core._context.add_message("user", msg.content)
             elif msg.role == "tool" and msg.content:
                 tool_name = msg.name or "unknown"
                 self.core.add_tool_result(tool_name, msg.content)
             elif msg.role == "assistant" and msg.content:
-                # Assistant messages from history
-                await self.core.add_assistant_message(msg.content)
+                # Historical assistant message - add directly to context
+                self.core._context.add_message("assistant", msg.content)
 
     async def _generate_response(
         self,
