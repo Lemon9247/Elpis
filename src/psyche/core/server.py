@@ -549,7 +549,7 @@ When you need a tool, use this format and then STOP:
 
             await self.mnemosyne.store_memory(
                 content=content,
-                summary=content[:100] + "..." if len(content) > 100 else content,
+                summary=content[:500] + "..." if len(content) > 500 else content,
                 memory_type="semantic",
                 tags=tags or [],
                 emotional_context=emotion,

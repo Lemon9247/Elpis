@@ -177,7 +177,7 @@ class MemoryHandler:
             try:
                 await self.mnemosyne_client.store_memory(
                     content=msg.content,
-                    summary=msg.content[:100],
+                    summary=msg.content[:500],
                     memory_type="episodic",
                     tags=["compacted", msg.role],
                     emotional_context=emotional_context,
@@ -217,7 +217,7 @@ class MemoryHandler:
         try:
             await self.mnemosyne_client.store_memory(
                 content=summary,
-                summary=summary[:100] + "..." if len(summary) > 100 else summary,
+                summary=summary[:500] + "..." if len(summary) > 500 else summary,
                 memory_type="semantic",  # Semantic memory for distilled knowledge
                 tags=["conversation_summary", "shutdown"],
                 emotional_context=emotional_context,

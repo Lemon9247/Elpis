@@ -208,7 +208,7 @@ async def _handle_store_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     # Create memory
     memory = Memory(
         content=args["content"],
-        summary=args.get("summary", args["content"][:100]),
+        summary=args.get("summary", args["content"][:500]),
         memory_type=MemoryType(args.get("memory_type", "episodic")),
         tags=args.get("tags", []),
         emotional_context=emotional_ctx,
