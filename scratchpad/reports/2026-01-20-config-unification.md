@@ -2,11 +2,11 @@
 
 **Date:** 2026-01-20
 **Branch:** `feature/unified-config-settings`
-**Commit:** 2229e39
+**Commits:** 2229e39, f60f92f, f7735ec, c0f4fa1
 
 ## Summary
 
-Created unified Pydantic settings for Mnemosyne, Psyche, and Hermes following Elpis's established pattern. This addresses the "wonky" configuration mentioned in the README roadmap.
+Created unified Pydantic settings for Mnemosyne, Psyche, and Hermes following Elpis's established pattern. This addresses the "wonky" configuration mentioned in the README roadmap. Also migrated all hardcoded magic numbers to use shared constants.
 
 ## Changes Made
 
@@ -71,13 +71,43 @@ Should add tests that verify:
 
 ## Verification
 
-All 561 tests pass:
+All 587 tests pass (26 new settings tests added):
 ```
-================= 561 passed, 1 skipped, 2 warnings in 15.15s ==================
+================= 587 passed, 1 skipped, 2 warnings in 16.39s ==================
 ```
+
+## Additional Work Done
+
+### Shared Constants Migration
+
+Updated all files to use constants from `psyche.shared.constants`:
+- `psyche/core/memory_handler.py` - Summary/content truncation, storage threshold
+- `psyche/core/server.py` - Summary length, content truncation, storage threshold
+- `psyche/handlers/dream_handler.py` - Max tokens, importance threshold, truncation
+- `psyche/handlers/idle_handler.py` - Consolidation thresholds
+- `psyche/memory/importance.py` - Auto-storage threshold
+- `psyche/tools/implementations/memory_tools.py` - Summary length
+
+### CLI Updates
+
+Both `psyche/cli.py` and `hermes/cli.py` now load settings from environment:
+```python
+from psyche.config.settings import ContextSettings, MemorySettings
+
+context_settings = ContextSettings()  # Reads PSYCHE_CONTEXT_* env vars
+memory_settings = MemorySettings()    # Reads PSYCHE_MEMORY_* env vars
+```
+
+### New Tests
+
+- `tests/mnemosyne/unit/test_settings.py` - 10 tests for Mnemosyne settings
+- `tests/psyche/unit/test_settings.py` - 10 tests for Psyche settings
+- `tests/psyche/unit/test_shared_constants.py` - 6 tests for shared constants
 
 ## Notes
 
 - Python 3.14 doesn't work yet (onnxruntime lacks wheels), used 3.13
 - The venv was recreated with `uv venv venv --python 3.13`
 - Pre-existing test failure was fixed (get_capabilities tool count)
+- Each nested settings class has its own `env_prefix` (e.g., `PSYCHE_CONTEXT_`)
+- The `env_nested_delimiter="__"` is primarily for `.env` file parsing
