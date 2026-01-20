@@ -7,8 +7,6 @@ has no active client connections. During dreaming, Psyche:
 - Makes connections between experiences
 - Generates insights
 - Potentially stores new semantic memories
-
-This is distinct from IdleHandler (client-side workspace exploration).
 """
 
 from __future__ import annotations
@@ -18,6 +16,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
 from loguru import logger
+
+from psyche.shared.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    MEMORY_CONTENT_TRUNCATE_LENGTH,
+    MEMORY_SUMMARY_LENGTH,
+)
 
 if TYPE_CHECKING:
     from psyche.core.server import PsycheCore
@@ -36,11 +40,11 @@ class DreamConfig:
 
     # Generation
     dream_temperature: float = 0.9  # Higher creativity for dreams
-    dream_max_tokens: int = 500
+    dream_max_tokens: int = MEMORY_SUMMARY_LENGTH
 
     # Storage
     store_insights: bool = True  # Whether to store dream insights as memories
-    insight_importance_threshold: float = 0.6
+    insight_importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD
 
 
 # Markers that suggest a dream produced something worth storing
@@ -64,8 +68,6 @@ class DreamHandler:
 
     Dreams are memory palace introspection - purely generative
     exploration of stored memories. No tools, no workspace access.
-
-    This is distinct from IdleHandler (client-side workspace exploration).
     """
 
     def __init__(
@@ -182,8 +184,8 @@ class DreamHandler:
             content = m.get("content", "")
             if content:
                 # Truncate long memories
-                if len(content) > 300:
-                    content = content[:300] + "..."
+                if len(content) > MEMORY_CONTENT_TRUNCATE_LENGTH:
+                    content = content[:MEMORY_CONTENT_TRUNCATE_LENGTH] + "..."
                 memory_texts.append(f"- {content}")
 
         memories_section = "\n".join(memory_texts) if memory_texts else "- No specific memories surfacing"
@@ -231,8 +233,32 @@ Your dream:"""
             )
             logger.info("Stored dream insight as memory")
 
+            # Trigger consolidation after storing dream insights
+            # This helps integrate new dream insights with existing memories
+            await self._maybe_trigger_consolidation()
+
         except Exception as e:
             logger.warning(f"Failed to store dream insight: {e}")
+
+    async def _maybe_trigger_consolidation(self) -> None:
+        """Optionally trigger consolidation after dream insights."""
+        if not self.core.is_mnemosyne_available:
+            return
+
+        try:
+            # Check if Mnemosyne client is available through core
+            mnemosyne = getattr(self.core, '_mnemosyne', None)
+            if mnemosyne and mnemosyne.is_connected:
+                should_consolidate, reason, _, _ = await mnemosyne.should_consolidate()
+                if should_consolidate:
+                    logger.info(f"Post-dream consolidation triggered: {reason}")
+                    result = await mnemosyne.consolidate_memories()
+                    logger.info(
+                        f"Post-dream consolidation: promoted {result.memories_promoted}, "
+                        f"clusters: {result.clusters_formed}"
+                    )
+        except Exception as e:
+            logger.debug(f"Post-dream consolidation skipped: {e}")
 
     def _log_dream(self, content: str, memories: List[dict]) -> None:
         """Log dream for debugging/introspection."""

@@ -120,11 +120,15 @@ python examples/04_mcp_server_usage.py
 - Streaming generation
 - State management
 
-**Note:** This is a demonstration of the API. For actual MCP usage, just run:
+**Note:** This is a demonstration of the API. For actual usage:
 ```bash
-psyche
+# Start the Psyche server
+psyche-server
+
+# Connect with Hermes (in another terminal)
+hermes
 ```
-Psyche automatically spawns the Elpis and Mnemosyne servers as subprocesses.
+Psyche manages the Elpis and Mnemosyne MCP servers and provides an HTTP API.
 
 ---
 

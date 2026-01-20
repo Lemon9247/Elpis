@@ -8,7 +8,7 @@ Elpis is a system for giving AI persistent memory and emotional state. It provid
 
 - **Persistent memory** via Mnemosyne with ChromaDB backend
 - **Emotional regulation** using a valence-arousal model
-- **Local and remote modes** for flexible deployment
+- **Server architecture** with HTTP API for remote access
 - **Dreaming** when idle (memory-based introspection)
 
 ## Prerequisites
@@ -63,40 +63,35 @@ huggingface-cli download \
 
 Or download manually from [HuggingFace](https://huggingface.co/models?search=gguf).
 
-## Quick Start Options
+## Quick Start
 
-Choose your path based on what you want to do:
+### Start the Psyche Server
 
-### Option A: Local Mode with Hermes (Recommended)
+Run the Psyche server which manages inference, memory, and emotional state:
 
-Run Hermes directly - it spawns Elpis and Mnemosyne as subprocesses:
+```bash
+psyche-server
+```
+
+This starts the HTTP server on port 8741.
+
+### Connect with Hermes TUI
+
+In a new terminal, connect with the Hermes TUI client:
 
 ```bash
 hermes
 ```
 
-That's it! Hermes manages the MCP servers automatically via stdio transport.
-
-### Option B: Server Mode (Remote Access)
-
-Run Psyche as a persistent server for remote connections:
+By default, Hermes connects to `http://127.0.0.1:8741`. To connect to a different server:
 
 ```bash
-# Terminal 1: Start the server
-psyche-server
-
-# Terminal 2: Connect with Hermes
-hermes --server http://localhost:8741
+hermes --server http://myserver:8741
 ```
 
-This mode enables:
-- Remote access from different machines
-- Persistent memory across sessions
-- Dreaming when no clients are connected
+### Run Examples
 
-### Option C: Run Examples
-
-Run the included examples to see the inference engine:
+You can also run the included examples to see the inference engine:
 
 ```bash
 # Basic inference
@@ -111,7 +106,7 @@ python examples/03_steering_vectors.py
 
 See [examples/README.md](examples/README.md) for details.
 
-### Option D: Use Programmatically
+### Use Programmatically
 
 Use Elpis in your own Python code:
 
@@ -147,22 +142,22 @@ asyncio.run(main())
 
 ### Basic Configuration
 
-Create a config file at `config.yaml`:
+Create a config file at `configs/elpis.toml`:
 
-```yaml
-model:
-  backend: llama-cpp  # or 'transformers'
-  path: ./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf
-  context_length: 8192
-  gpu_layers: 35
-  temperature: 0.7
-  top_p: 0.9
+```toml
+[model]
+backend = "llama-cpp"  # or 'transformers'
+path = "./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf"
+context_length = 8192
+gpu_layers = 35
+temperature = 0.7
+top_p = 0.9
 
-emotion:
-  baseline_valence: 0.0   # Neutral baseline
-  baseline_arousal: 0.0
-  decay_rate: 0.1         # Return to baseline rate
-  steering_strength: 1.0  # Global emotional strength
+[emotion]
+baseline_valence = 0.0   # Neutral baseline
+baseline_arousal = 0.0
+decay_rate = 0.1         # Return to baseline rate
+steering_strength = 1.0  # Global emotional strength
 ```
 
 ### Environment Variables
@@ -204,13 +199,13 @@ This takes ~5-10 minutes on GPU and creates 4 emotion vectors.
 
 Update your config:
 
-```yaml
-model:
-  backend: transformers
-  path: meta-llama/Llama-3.1-8B-Instruct
-  torch_dtype: bfloat16
-  steering_layer: 15
-  emotion_vectors_dir: ./data/emotion_vectors
+```toml
+[model]
+backend = "transformers"
+path = "meta-llama/Llama-3.1-8B-Instruct"
+torch_dtype = "bfloat16"
+steering_layer = 15
+emotion_vectors_dir = "./data/emotion_vectors"
 ```
 
 Or via environment:
@@ -385,13 +380,20 @@ Ensure:
 3. Path configured: `emotion_vectors_dir`
 4. Sufficient GPU memory (~16GB for 8B model)
 
+### Cannot connect to server
+
+Check:
+1. Server is running: `psyche-server`
+2. Correct URL: `hermes --server http://localhost:8741`
+3. Port not blocked by firewall
+
 ## Next Steps
 
-1. ✅ **Run examples** - Try `examples/01_basic_inference.py`
-2. 📊 **Experiment** - Use `scripts/emotion_repl.py` to explore states
-3. 🎯 **Train vectors** - Set up steering for advanced expression
-4. 🔧 **Integrate** - Use Elpis in your own projects
-5. 🚀 **Deploy** - Run as MCP server with Psyche client
+1. **Start the server** - Run `psyche-server`
+2. **Connect with Hermes** - Run `hermes`
+3. **Experiment** - Use `scripts/emotion_repl.py` to explore states
+4. **Train vectors** - Set up steering for advanced expression
+5. **Integrate** - Use Elpis in your own projects
 
 ## Resources
 
@@ -413,4 +415,4 @@ Ensure:
 python examples/01_basic_inference.py
 ```
 
-Happy inferring! 🚀
+Happy inferring!

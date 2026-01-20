@@ -1,30 +1,19 @@
 """
 Hermes TUI Application - Terminal interface for Psyche.
 
-A Textual-based terminal UI for interacting with Psyche. Supports two modes:
-
-Local Mode (default):
-- Spawns Elpis and Mnemosyne as MCP subprocesses
-- Runs ReactHandler and IdleHandler locally
-- Full tool execution in the same process
-
-Remote Mode (--server):
-- Connects to a running Psyche server via HTTP
-- Executes file/bash/search tools locally
-- Memory tools execute server-side
-- Tool execution loop with max 10 iterations
+A Textual-based terminal UI for interacting with Psyche in remote mode.
+Connects to a running Psyche server via HTTP and executes tools locally.
 
 Features:
 - Streaming responses with chat view
 - Tool activity display with approval workflow
 - Emotional state tracking (valence-arousal)
-- Idle thoughts during silence
 - Slash commands (/help, /status, /emotion, etc.)
 """
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from enum import Enum
 
@@ -46,12 +35,8 @@ from hermes.widgets import (
 )
 from hermes.widgets.sidebar import StatusDisplay
 from hermes.commands import get_command, format_help_text, format_shortcut_help, format_startup_hint
-from psyche.handlers import PsycheClient, ReactHandler
-from psyche.handlers import IdleHandler, ThoughtEvent
+from hermes.handlers import PsycheClient, RemotePsycheClient
 from psyche.tools.tool_engine import ToolEngine
-
-if TYPE_CHECKING:
-    from psyche.mcp.client import ElpisClient, MnemosyneClient
 
 
 class AppState(Enum):
@@ -59,7 +44,6 @@ class AppState(Enum):
 
     IDLE = "idle"
     PROCESSING = "processing"
-    THINKING = "thinking"
     DISCONNECTED = "disconnected"
 
 
@@ -69,6 +53,8 @@ class Hermes(App):
 
     A Textual-based terminal UI for the Psyche continuous inference agent.
     Features streaming responses, tool activity display, and emotional state tracking.
+
+    Connects to a remote Psyche server and executes file/bash/search tools locally.
     """
 
     TITLE = "Hermes"
@@ -91,10 +77,6 @@ class Hermes(App):
     def __init__(
         self,
         client: Optional[PsycheClient] = None,
-        react_handler: Optional[ReactHandler] = None,
-        idle_handler: Optional[IdleHandler] = None,
-        elpis_client: Optional["ElpisClient"] = None,
-        mnemosyne_client: Optional["MnemosyneClient"] = None,
         tool_engine: Optional[ToolEngine] = None,
         *args,
         **kwargs,
@@ -103,26 +85,17 @@ class Hermes(App):
         Initialize the Hermes app.
 
         Args:
-            client: PsycheClient for memory/inference operations
-            react_handler: ReactHandler for user input processing
-            idle_handler: IdleHandler for idle thinking
-            elpis_client: ElpisClient for inference
-            mnemosyne_client: MnemosyneClient for memory (optional)
-            tool_engine: ToolEngine for local tool execution (remote mode)
+            client: PsycheClient for connecting to the Psyche server
+            tool_engine: ToolEngine for local tool execution
         """
         super().__init__(*args, **kwargs)
 
         self._client = client
-        self._react_handler = react_handler
-        self._idle_handler = idle_handler
-        self._elpis_client = elpis_client
-        self._mnemosyne_client = mnemosyne_client
         self._tool_engine = tool_engine
 
         # Application state
         self._state = AppState.IDLE
-        self._idle_task: Optional[asyncio.Task] = None
-        self._connection_task: Optional[asyncio.Task] = None
+        self._is_processing = False
 
         # Tracking for double-tap Ctrl+C to quit
         self._last_ctrl_c: float = 0.0
@@ -135,12 +108,7 @@ class Hermes(App):
     @property
     def is_processing(self) -> bool:
         """Check if currently processing user input."""
-        return self._react_handler.is_processing if self._react_handler else False
-
-    @property
-    def is_thinking(self) -> bool:
-        """Check if currently in idle thinking mode."""
-        return self._idle_handler.is_thinking if self._idle_handler else False
+        return self._is_processing
 
     @property
     def reasoning_enabled(self) -> bool:
@@ -170,113 +138,21 @@ class Hermes(App):
         chat = self.query_one("#chat", ChatView)
         chat.add_system_message(format_startup_hint())
 
-        # Small delay to let Textual fully initialize before spawning subprocesses
+        # Small delay to let Textual fully initialize
         await asyncio.sleep(0.1)
 
-        # Connect clients and start services
-        self._connection_task = asyncio.create_task(self._run_connected())
+        # Connect to server
+        if self._client and isinstance(self._client, RemotePsycheClient):
+            try:
+                await self._client.connect()
+                logger.info(f"Connected to Psyche server at {self._client.base_url}")
+            except Exception as e:
+                logger.error(f"Failed to connect to server: {e}")
+                chat.add_system_message(f"[Error] Failed to connect to server: {e}")
+                self._state = AppState.DISCONNECTED
 
         # Start periodic emotional state updates
         self.set_interval(1.0, self._update_emotional_display)
-
-    async def _run_connected(self) -> None:
-        """Run with client connections and idle loop."""
-        if not self._elpis_client:
-            logger.error("ElpisClient not configured")
-            return
-
-        max_retries = 3
-        retry_delay = 1.0
-
-        for attempt in range(max_retries):
-            try:
-                # Connect to Elpis
-                async with self._elpis_client.connect():
-                    logger.info("Connected to Elpis inference server")
-
-                    # Optionally connect to Mnemosyne
-                    if self._mnemosyne_client:
-                        async with self._mnemosyne_client.connect():
-                            logger.info("Connected to Mnemosyne memory server")
-                            await self._run_connected_loop()
-                    else:
-                        await self._run_connected_loop()
-
-                return  # Normal exit
-
-            except asyncio.CancelledError:
-                # Normal shutdown
-                return
-            except Exception as e:
-                error_msg = f"{type(e).__name__}: {e}"
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        f"Connection failed (attempt {attempt + 1}/{max_retries}): {error_msg}"
-                    )
-                    await asyncio.sleep(retry_delay)
-                    retry_delay *= 2
-                else:
-                    logger.error(f"Connection failed after {max_retries} attempts: {error_msg}")
-                    try:
-                        chat = self.query_one("#chat", ChatView)
-                        chat.add_system_message(f"[CRITICAL] Connection error: {e}")
-                    except Exception:
-                        pass
-                    self._state = AppState.DISCONNECTED
-
-    async def _run_connected_loop(self) -> None:
-        """Run the main loop while clients are connected."""
-        # Start the idle thinking loop
-        if self._idle_handler:
-            self._idle_task = asyncio.create_task(self._run_idle_loop())
-
-        # Keep running until cancelled
-        try:
-            while True:
-                await asyncio.sleep(1.0)
-        except asyncio.CancelledError:
-            # Cancel idle task on shutdown
-            if self._idle_task and not self._idle_task.done():
-                self._idle_task.cancel()
-                try:
-                    await self._idle_task
-                except asyncio.CancelledError:
-                    pass
-
-    async def _run_idle_loop(self) -> None:
-        """Run the idle thinking loop."""
-        if not self._idle_handler:
-            return
-
-        # Get idle think interval from handler config
-        idle_interval = self._idle_handler.config.post_interaction_delay
-
-        try:
-            while True:
-                # Wait for idle interval
-                await asyncio.sleep(idle_interval / 2)
-
-                # Skip if processing or not ready for idle thinking
-                if self.is_processing or not self._idle_handler.can_start_thinking():
-                    continue
-
-                # Generate idle thought
-                try:
-                    self._state = AppState.THINKING
-                    await self._idle_handler.generate_thought(
-                        on_token=self._on_thinking,
-                        on_tool_call=self._on_tool_call,
-                        on_thought=self._on_thought,
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Idle thinking error: {e}")
-                finally:
-                    self._state = AppState.IDLE
-
-        except asyncio.CancelledError:
-            pass
 
     def _on_token(self, token: str) -> None:
         """Handle streaming token callback."""
@@ -287,18 +163,6 @@ class Hermes(App):
                 if not chat.is_streaming:
                     chat.start_stream()
                 chat.append_token(token)
-            except Exception:
-                pass  # Widget may not exist during shutdown
-
-        self.call_later(update)
-
-    def _on_thought(self, thought: ThoughtEvent) -> None:
-        """Handle internal thought callback."""
-
-        def update():
-            try:
-                thoughts = self.query_one("#thoughts", ThoughtPanel)
-                thoughts.add_thought(thought.content, thought.thought_type)
             except Exception:
                 pass  # Widget may not exist during shutdown
 
@@ -329,18 +193,6 @@ class Hermes(App):
                     tool_widget.add_tool_start(name, args)
                 else:
                     tool_widget.update_tool_complete(name, result)
-            except Exception:
-                pass  # Widget may not exist during shutdown
-
-        self.call_later(update)
-
-    def _on_thinking(self, token: str) -> None:
-        """Handle streaming token during idle thought generation."""
-
-        def update():
-            try:
-                thoughts = self.query_one("#thoughts", ThoughtPanel)
-                thoughts.on_thinking_token(token)
             except Exception:
                 pass  # Widget may not exist during shutdown
 
@@ -378,44 +230,29 @@ class Hermes(App):
             chat = self.query_one("#chat", ChatView)
             chat.add_user_message(message.value)
 
-            # Process through ReactHandler
+            # Process through client
             await self._process_user_input(message.value)
 
     async def _process_user_input(self, text: str) -> None:
-        """Process user input through ReactHandler or client directly."""
-        # Record user interaction for idle timing
-        if self._idle_handler:
-            self._idle_handler.record_user_interaction()
-
-        # Interrupt idle thinking if active
-        if self._idle_handler and self._idle_handler.is_thinking:
-            self._idle_handler.interrupt()
+        """Process user input through the remote client."""
+        if not self._client:
+            logger.error("No client configured")
+            chat = self.query_one("#chat", ChatView)
+            chat.add_system_message("[Error: Not connected]")
+            return
 
         self._state = AppState.PROCESSING
+        self._is_processing = True
 
         try:
-            if self._react_handler:
-                # Local mode: use ReactHandler
-                await self._react_handler.process_input(
-                    text,
-                    on_token=self._on_token,
-                    on_tool_call=self._on_tool_call,
-                    on_response=self._on_response,
-                    on_thought=self._on_thought,
-                )
-            elif self._client:
-                # Remote mode: use client directly
-                await self._process_via_client(text)
-            else:
-                logger.error("No handler or client configured")
-                chat = self.query_one("#chat", ChatView)
-                chat.add_system_message("[Error: Not connected]")
+            await self._process_via_client(text)
         except Exception as e:
             logger.error(f"Error processing input: {e}")
             chat = self.query_one("#chat", ChatView)
             chat.add_system_message(f"[Error: {e}]")
         finally:
             self._state = AppState.IDLE
+            self._is_processing = False
 
     async def _process_via_client(self, text: str) -> None:
         """Process input via remote client with tool execution loop."""
@@ -534,7 +371,7 @@ class Hermes(App):
             chat.add_system_message(
                 f"State: {self._state.value}, "
                 f"Messages: {status.get('message_count', 0)}, "
-                f"Tokens: {status.get('total_tokens', 0)}/{status.get('available_tokens', 0)}"
+                f"Server: {status.get('server_url', 'unknown')}"
             )
         else:
             chat.add_system_message("Status unavailable: no client configured")
@@ -608,31 +445,20 @@ class Hermes(App):
 
     async def action_interrupt_or_quit(self) -> None:
         """
-        Handle Ctrl+C: interrupt generation if running, or quit on double-tap when idle.
+        Handle Ctrl+C: quit on double-tap when idle.
 
         Behavior:
-        - If generating: interrupt and show "[Interrupted]"
         - If idle (first tap): show "Press again to quit"
         - If idle (second tap within threshold): quit
         """
         now = time.time()
 
-        # Check if actively processing
-        is_active = self.is_processing or self.is_thinking
-
-        if is_active:
-            # Interrupt the active process
-            interrupted = False
-            if self._react_handler and self._react_handler.is_processing:
-                interrupted = self._react_handler.interrupt()
-            elif self._idle_handler and self._idle_handler.is_thinking:
-                interrupted = self._idle_handler.interrupt()
-
-            if interrupted:
-                self.notify("Generation interrupted", severity="warning")
+        # If processing, just notify (can't interrupt remote generation easily)
+        if self._is_processing:
+            self.notify("Processing... please wait", severity="information")
             return
 
-        # Not generating - implement double-tap to quit
+        # Not processing - implement double-tap to quit
         time_since_last = now - self._last_ctrl_c
         if time_since_last < self.DOUBLE_TAP_THRESHOLD:
             # Double-tap detected - quit
@@ -643,34 +469,19 @@ class Hermes(App):
             self.notify("Press Ctrl+C again to quit, or Ctrl+Q", severity="information")
 
     async def action_quit(self) -> None:
-        """Quit the application with graceful memory consolidation."""
+        """Quit the application."""
         # Show visual feedback
         self.notify("Shutting down...", severity="information", timeout=10)
         try:
             chat = self.query_one("#chat", ChatView)
-            chat.add_system_message("Consolidating memories and shutting down...")
+            chat.add_system_message("Disconnecting from server...")
         except Exception:
             pass  # Widget may not exist
 
-        # Graceful shutdown
+        # Disconnect from server
         if self._client:
             await self._client.shutdown()
 
-        self.notify("Memories saved. Goodbye!", severity="information", timeout=2)
-
-        # Cancel background tasks
-        if self._idle_task and not self._idle_task.done():
-            self._idle_task.cancel()
-            try:
-                await self._idle_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._connection_task and not self._connection_task.done():
-            self._connection_task.cancel()
-            try:
-                await self._connection_task
-            except asyncio.CancelledError:
-                pass
+        self.notify("Goodbye!", severity="information", timeout=2)
 
         self.exit()

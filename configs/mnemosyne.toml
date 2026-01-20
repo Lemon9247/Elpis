@@ -1,0 +1,39 @@
+# Mnemosyne Configuration
+# Memory server for persistent episodic memory storage
+
+[storage]
+# Directory for ChromaDB persistence
+persist_directory = "./data/memory"
+
+# SentenceTransformer model for embeddings
+embedding_model = "all-MiniLM-L6-v2"
+
+# Collection names
+short_term_collection = "short_term_memory"
+long_term_collection = "long_term_memory"
+
+[consolidation]
+# Minimum importance score for promotion to long-term (0.0-1.0)
+importance_threshold = 0.6
+
+# Cosine similarity threshold for clustering (0.0-1.0)
+similarity_threshold = 0.85
+
+# Minimum hours before memory eligible for consolidation
+min_age_hours = 1
+
+# Maximum memories per consolidation cycle
+max_batch_size = 50
+
+# Memory count that triggers consolidation recommendation
+buffer_threshold = 100
+
+# Minimum memories to form a cluster
+min_cluster_size = 2
+
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR
+level = "INFO"
+
+# Suppress stderr output (used when running as subprocess)
+quiet = false

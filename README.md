@@ -11,33 +11,15 @@ Do robots dream of electric sheep?
 
 ## What is Elpis?
 
-Elpis is a system for giving AI persistent memory and emotional state. It provides local LLM inference with emotional modulation, semantic memory with consolidation, and a server architecture that enables both local and remote operation.
+Elpis is a system for giving AI persistent memory and emotional state. It provides local LLM inference with emotional modulation, semantic memory with consolidation, and a server architecture for remote operation.
 
 The system consists of four components:
 - **Elpis** - Inference MCP server with emotional modulation via valence-arousal model
 - **Mnemosyne** - Memory MCP server with ChromaDB backend and short/long-term consolidation
 - **Psyche** - Core library and HTTP server for memory coordination, tool execution, and dreaming
-- **Hermes** - TUI client for interactive conversations (supports local and remote modes)
+- **Hermes** - TUI client that connects to a Psyche server and executes tools locally
 
 ## Architecture
-
-### Local Mode (Default)
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│    Hermes    │     │    Elpis     │     │  Mnemosyne   │
-│     (TUI)    │     │  (Inference) │     │   (Memory)   │
-│              │     │              │     │              │
-│ - Chat view  │     │ - LLM gen    │     │ - ChromaDB   │
-│ - Tool exec  │     │ - Emotion    │     │ - Short-term │
-│ - Handlers   │     │ - Steering   │     │ - Long-term  │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-       │                    │                    │
-       └────────────────────┴────────────────────┘
-                         MCP (stdio)
-```
-
-### Remote Mode (Server)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -46,7 +28,7 @@ The system consists of four components:
 │  │  PsycheCore  │  │    Elpis     │  │  Mnemosyne   │    │
 │  │              │  │  (Inference) │  │   (Memory)   │    │
 │  │ - Context    │  │              │  │              │    │
-│  │ - Handlers   │  │ - LLM gen    │  │ - ChromaDB   │    │
+│  │ - Memory     │  │ - LLM gen    │  │ - ChromaDB   │    │
 │  │ - Dreams     │  │ - Emotion    │  │ - Clustering │    │
 │  └──────────────┘  └──────────────┘  └──────────────┘    │
 │                         MCP (stdio)                      │
@@ -57,18 +39,18 @@ The system consists of four components:
            │                             │
     ┌──────┴──────┐               ┌──────┴──────┐
     │   Hermes    │               │   External  │
-    │  (Remote)   │               │   Clients   │
+    │    (TUI)    │               │   Clients   │
     │             │               │             │
-    │ - Local     │               │ - Any HTTP  │
-    │   tools     │               │   client    │
+    │ - Chat view │               │ - Any HTTP  │
+    │ - Tools     │               │   client    │
     └─────────────┘               └─────────────┘
 ```
 
-### Key Handlers
+### Server Components
 
-- **ReactHandler** - Processes user messages, manages tool execution loops
-- **IdleHandler** - Background processing during silence, triggers memory consolidation
+- **PsycheCore** - Central coordination layer for context, memory, and emotional state
 - **DreamHandler** - Memory-based introspection when no clients are connected
+- **RemotePsycheClient** - HTTP client in Hermes for connecting to the server
 
 ### Memory Consolidation
 
@@ -167,33 +149,39 @@ elpis-server
 
 ## Usage
 
-### Local Mode (Recommended for Single User)
+### Start the Psyche Server
 
-Run Hermes directly - it spawns Elpis and Mnemosyne as subprocesses via MCP:
+Run Psyche as a persistent server:
 
 ```bash
-pip install -e .
+psyche-server
+```
+
+This starts the Psyche HTTP server on port 8741, which:
+- Manages memory and context
+- Handles inference via Elpis MCP server
+- Dreams when no clients are connected
+- Provides an OpenAI-compatible API
+
+### Connect with Hermes TUI
+
+Connect with the Hermes terminal interface:
+
+```bash
 hermes
+```
+
+By default, Hermes connects to `http://127.0.0.1:8741`. To connect to a different server:
+
+```bash
+hermes --server http://myserver:8741
 ```
 
 The Hermes TUI provides:
 - Terminal interface with chat view
 - Automatic tool execution (file ops, bash, search)
-- Memory management with context compaction
-- Idle thinking with emotional state display
+- Emotional state display
 - Slash commands (/help, /status, /emotion, etc.)
-
-### Server Mode (Remote Access)
-
-Run Psyche as a persistent server for remote connections:
-
-```bash
-# Terminal 1: Start the server
-psyche-server
-
-# Terminal 2: Connect with Hermes
-hermes --server http://localhost:8741
-```
 
 In server mode:
 - Psyche manages memory and executes memory tools server-side
@@ -333,7 +321,7 @@ mypy src/elpis
 - [x] Phase 2: MCP servers (inference, memory, tools, emotional regulation)
 - [x] Phase 3: Long-term memory consolidation with clustering
 - [x] Phase 4: Architecture refactor
-  - [x] New architecture: PsycheCore, ReactHandler, IdleHandler
+  - [x] New architecture: PsycheCore, DreamHandler
   - [x] Extract TUI into Hermes package
   - [x] Remove deprecated MemoryServer (~2,500 lines)
 - [x] Phase 5: Headless API server
@@ -344,15 +332,14 @@ mypy src/elpis
   - [x] Server-side memory tool execution
   - [x] Client-side file/bash/search tool execution
   - [x] Context window synchronization between Elpis and Psyche
-- [ ] Phase 7: Memory retrieval quality
+- [x] Phase 7: Unified configuration
+  - [x] TOML-based configuration with pydantic-settings
+  - [x] Remove local mode from Hermes (remote-only)
+- [ ] Future: Memory retrieval quality
   - [ ] Hybrid search (BM25 + vector with RRF fusion)
   - [ ] Storage-side filtering (skip questions, min length)
   - [ ] Quality-weighted ranking (recency, importance, type)
   - [ ] Memory cleanup tools
-- [ ] Future: Configuration system improvements
-  - [ ] Unified config between Elpis/Psyche/Hermes
-  - [ ] Single source of truth for context_length
-  - [ ] Better environment variable handling
 - [ ] Future: Emotional system enhancements
   - [ ] More nuanced emotion mapping
   - [ ] Event history and emotional momentum

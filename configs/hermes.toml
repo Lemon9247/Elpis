@@ -1,0 +1,17 @@
+# Hermes Configuration
+# TUI client for interacting with Psyche
+
+[connection]
+# Psyche server URL (required)
+server_url = "http://127.0.0.1:8741"
+
+[workspace]
+# Workspace directory path for local tool execution
+path = "."
+
+[logging]
+# Enable debug logging
+debug = false
+
+# Log file path (uncomment to enable file logging)
+# log_file = "./logs/hermes.log"

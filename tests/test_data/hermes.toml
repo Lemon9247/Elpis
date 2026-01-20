@@ -1,0 +1,11 @@
+# Hermes test configuration
+# Minimal settings for testing
+
+[connection]
+server_url = "http://127.0.0.1:8741"
+
+[workspace]
+path = "./test_workspace"
+
+[logging]
+debug = true

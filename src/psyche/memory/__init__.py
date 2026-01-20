@@ -8,8 +8,7 @@ For the full architecture, see:
 - psyche.core.server.PsycheCore - Memory coordination layer
 - psyche.core.context_manager.ContextManager - Context management
 - psyche.core.memory_handler.MemoryHandler - Memory handling
-- psyche.handlers.react_handler.ReactHandler - ReAct loop handling
-- psyche.handlers.idle_handler.IdleHandler - Idle thinking
+- hermes.handlers.psyche_client.RemotePsycheClient - HTTP client for Psyche
 """
 
 from psyche.memory.compaction import CompactionResult, ContextCompactor

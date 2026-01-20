@@ -1,0 +1,20 @@
+# Mnemosyne test configuration
+# Minimal settings for testing
+
+[storage]
+persist_directory = "./test_data/memory"
+embedding_model = "all-MiniLM-L6-v2"
+short_term_collection = "test_short_term"
+long_term_collection = "test_long_term"
+
+[consolidation]
+importance_threshold = 0.6
+similarity_threshold = 0.85
+min_age_hours = 0
+max_batch_size = 10
+buffer_threshold = 50
+min_cluster_size = 2
+
+[logging]
+level = "DEBUG"
+quiet = true

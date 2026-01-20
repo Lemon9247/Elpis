@@ -6,7 +6,7 @@ from typing import Generator
 
 import pytest
 
-from elpis.config.settings import LoggingSettings, ModelSettings, Settings, ToolSettings
+from elpis.config.settings import LoggingSettings, ModelSettings, Settings
 
 
 @pytest.fixture
@@ -37,12 +37,6 @@ def test_settings(temp_dir: Path, mock_model_path: Path) -> Settings:
             top_p=0.9,
             max_tokens=100,
             hardware_backend="cpu",
-        ),
-        tools=ToolSettings(
-            workspace_dir=str(temp_dir / "workspace"),
-            max_bash_timeout=5,
-            max_file_size=1024,
-            enable_dangerous_commands=False,
         ),
         logging=LoggingSettings(
             level="DEBUG", output_file=str(temp_dir / "test.log"), format="text"
