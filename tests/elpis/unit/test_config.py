@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from elpis.config.settings import LoggingSettings, ModelSettings, Settings, ToolSettings
+from elpis.config.settings import EmotionSettings, LoggingSettings, ModelSettings, Settings
 
 
 class TestModelSettings:
@@ -55,37 +55,40 @@ class TestModelSettings:
             ModelSettings(temperature=3.0)  # Too high
 
 
-class TestToolSettings:
-    """Tests for ToolSettings."""
+class TestEmotionSettings:
+    """Tests for EmotionSettings."""
 
     def test_default_values(self):
-        """Test default tool settings."""
-        settings = ToolSettings()
-        assert settings.workspace_dir == "./workspace"
-        assert settings.max_bash_timeout == 30
-        assert settings.max_file_size == 10485760
-        assert settings.enable_dangerous_commands is False
+        """Test default emotion settings."""
+        settings = EmotionSettings()
+        assert settings.baseline_valence == 0.0
+        assert settings.baseline_arousal == 0.0
+        assert settings.decay_rate == 0.1
+        assert settings.max_delta == 0.5
+        assert settings.steering_strength == 1.0
 
     def test_custom_values(self):
-        """Test custom tool settings."""
-        settings = ToolSettings(
-            workspace_dir="/custom/workspace",
-            max_bash_timeout=60,
-            max_file_size=5000000,
-            enable_dangerous_commands=True,
+        """Test custom emotion settings."""
+        settings = EmotionSettings(
+            baseline_valence=0.2,
+            baseline_arousal=-0.1,
+            decay_rate=0.2,
+            max_delta=0.8,
+            steering_strength=1.5,
         )
-        assert settings.workspace_dir == "/custom/workspace"
-        assert settings.max_bash_timeout == 60
-        assert settings.max_file_size == 5000000
-        assert settings.enable_dangerous_commands is True
+        assert settings.baseline_valence == 0.2
+        assert settings.baseline_arousal == -0.1
+        assert settings.decay_rate == 0.2
+        assert settings.max_delta == 0.8
+        assert settings.steering_strength == 1.5
 
-    def test_validation_timeout(self):
-        """Test timeout validation."""
+    def test_validation_valence_range(self):
+        """Test valence validation."""
         with pytest.raises(ValueError):
-            ToolSettings(max_bash_timeout=0)  # Too small
+            EmotionSettings(baseline_valence=2.0)  # Too high
 
         with pytest.raises(ValueError):
-            ToolSettings(max_bash_timeout=500)  # Too large
+            EmotionSettings(baseline_valence=-2.0)  # Too low
 
 
 class TestLoggingSettings:
@@ -113,19 +116,19 @@ class TestSettings:
         """Test default root settings."""
         settings = Settings()
         assert isinstance(settings.model, ModelSettings)
-        assert isinstance(settings.tools, ToolSettings)
+        assert isinstance(settings.emotion, EmotionSettings)
         assert isinstance(settings.logging, LoggingSettings)
 
     def test_nested_configuration(self):
         """Test nested configuration."""
         settings = Settings(
             model=ModelSettings(path="/test/model.gguf", gpu_layers=10),
-            tools=ToolSettings(workspace_dir="/test/workspace"),
+            emotion=EmotionSettings(steering_strength=2.0),
             logging=LoggingSettings(level="DEBUG"),
         )
         assert settings.model.path == "/test/model.gguf"
         assert settings.model.gpu_layers == 10
-        assert settings.tools.workspace_dir == "/test/workspace"
+        assert settings.emotion.steering_strength == 2.0
         assert settings.logging.level == "DEBUG"
 
     def test_environment_variable_prefix(self):

@@ -1,10 +1,15 @@
 """Pydantic settings models for Elpis configuration."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional, Tuple, Type
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
 
 if TYPE_CHECKING:
     from elpis.llm.backends.llama_cpp.config import LlamaCppConfig
@@ -98,17 +103,6 @@ class ModelSettings(BaseSettings):
         )
 
 
-class ToolSettings(BaseSettings):
-    """Tool execution configuration."""
-
-    workspace_dir: str = Field(default="./workspace")
-    max_bash_timeout: int = Field(default=30, ge=1, le=300)
-    max_file_size: int = Field(default=10485760, ge=1024)  # 10MB
-    enable_dangerous_commands: bool = Field(default=False)
-
-    model_config = SettingsConfigDict(env_prefix="ELPIS_TOOLS_")
-
-
 class EmotionSettings(BaseSettings):
     """Emotional regulation configuration."""
 
@@ -161,9 +155,34 @@ class Settings(BaseSettings):
 
     model: ModelSettings = Field(default_factory=ModelSettings)
     emotion: EmotionSettings = Field(default_factory=EmotionSettings)
-    tools: ToolSettings = Field(default_factory=ToolSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_nested_delimiter="__", case_sensitive=False
+        toml_file="configs/elpis.toml",
+        env_nested_delimiter="__",
+        case_sensitive=False,
+        extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        """Configure settings sources with TOML support.
+
+        Priority (highest to lowest):
+        1. Init settings (constructor arguments)
+        2. Environment variables
+        3. TOML config file
+        4. Default values
+        """
+        return (
+            init_settings,
+            env_settings,
+            TomlConfigSettingsSource(settings_cls),
+        )

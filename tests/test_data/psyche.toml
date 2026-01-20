@@ -1,0 +1,55 @@
+# Psyche test configuration
+# Minimal settings for testing
+
+# Root-level settings
+emotional_modulation = true
+
+[context]
+max_context_tokens = 8000
+reserve_tokens = 2000
+enable_checkpoints = false
+checkpoint_interval = 10
+
+[memory]
+enable_auto_retrieval = true
+auto_retrieval_count = 2
+auto_storage = true
+auto_storage_threshold = 0.6
+
+[reasoning]
+enabled = true
+
+[idle]
+post_interaction_delay = 10.0
+idle_tool_cooldown_seconds = 30.0
+startup_warmup_seconds = 5.0
+max_idle_tool_iterations = 2
+max_idle_result_chars = 1000
+think_temperature = 0.5
+generation_timeout = 30.0
+allow_idle_tools = false
+emotional_modulation = true
+
+[consolidation]
+enabled = false
+check_interval = 60.0
+importance_threshold = 0.6
+similarity_threshold = 0.85
+
+[server]
+http_host = "127.0.0.1"
+http_port = 8742
+mcp_enabled = false
+elpis_command = "elpis-server"
+mnemosyne_command = "mnemosyne-server"
+dream_enabled = false
+dream_delay_seconds = 10.0
+model_name = "psyche-test"
+
+[tools]
+bash_timeout = 10
+max_file_size = 100000
+tool_timeout = 30.0
+
+[logging]
+level = "DEBUG"

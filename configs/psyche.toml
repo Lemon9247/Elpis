@@ -1,0 +1,118 @@
+# Psyche Configuration
+# Coordination layer and agent orchestration
+
+# Enable emotional modulation in generation (root-level setting)
+emotional_modulation = true
+
+[context]
+# Maximum tokens for working context
+max_context_tokens = 24000
+
+# Tokens reserved for response generation
+reserve_tokens = 4000
+
+# Enable periodic context checkpointing
+enable_checkpoints = true
+
+# Save checkpoint every N messages
+checkpoint_interval = 20
+
+[memory]
+# Automatically retrieve relevant memories on user input
+enable_auto_retrieval = true
+
+# Number of memories to auto-retrieve
+auto_retrieval_count = 3
+
+# Automatically store important exchanges
+auto_storage = true
+
+# Minimum importance score for auto-storage (0.0-1.0)
+auto_storage_threshold = 0.6
+
+[reasoning]
+# Enable <reasoning> tags in responses
+enabled = true
+
+[idle]
+# Seconds to wait after user input before idle thinking
+post_interaction_delay = 60.0
+
+# Minimum seconds between idle tool uses
+idle_tool_cooldown_seconds = 300.0
+
+# Seconds after startup before tools allowed in idle mode
+startup_warmup_seconds = 120.0
+
+# Maximum tool iterations per idle thought
+max_idle_tool_iterations = 3
+
+# Truncate tool results to this size
+max_idle_result_chars = 8000
+
+# Temperature for reflection generation
+think_temperature = 0.7
+
+# Generation timeout in seconds
+generation_timeout = 120.0
+
+# Allow tool use during idle reflection
+allow_idle_tools = true
+
+# Use emotional modulation during idle
+emotional_modulation = true
+
+[consolidation]
+# Enable memory consolidation during idle
+enabled = true
+
+# Seconds between consolidation checks
+check_interval = 300.0
+
+# Minimum importance for promotion (0.0-1.0)
+importance_threshold = 0.6
+
+# Similarity threshold for clustering (0.0-1.0)
+similarity_threshold = 0.85
+
+[server]
+# HTTP server bind address
+http_host = "127.0.0.1"
+
+# HTTP server port
+http_port = 8741
+
+# Enable MCP server (future)
+mcp_enabled = false
+
+# Command to launch Elpis MCP server
+elpis_command = "elpis-server"
+
+# Command to launch Mnemosyne MCP server
+mnemosyne_command = "mnemosyne-server"
+
+# Enable dreaming when no clients connected
+dream_enabled = true
+
+# Seconds to wait before starting to dream
+dream_delay_seconds = 60.0
+
+# Model name for API responses
+model_name = "psyche"
+
+[tools]
+# Bash command timeout in seconds
+bash_timeout = 30
+
+# Maximum file size in bytes
+max_file_size = 1000000
+
+# Default tool execution timeout in seconds
+tool_timeout = 60.0
+
+# Allowed file extensions (empty = all)
+# allowed_extensions = [".py", ".md", ".txt"]
+
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR
+level = "INFO"

@@ -1,7 +1,14 @@
 """Pydantic settings models for Mnemosyne configuration."""
 
+from typing import Tuple, Type
+
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
 
 
 class StorageSettings(BaseSettings):
@@ -89,7 +96,31 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        toml_file="configs/mnemosyne.toml",
         env_nested_delimiter="__",
         case_sensitive=False,
+        extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        """Configure settings sources with TOML support.
+
+        Priority (highest to lowest):
+        1. Init settings (constructor arguments)
+        2. Environment variables
+        3. TOML config file
+        4. Default values
+        """
+        return (
+            init_settings,
+            env_settings,
+            TomlConfigSettingsSource(settings_cls),
+        )

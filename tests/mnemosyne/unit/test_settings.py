@@ -89,12 +89,14 @@ class TestSettings:
     def test_nested_env_override(self):
         """Test nested environment variable override.
 
-        Note: Nested settings use their own env_prefix (e.g., MNEMOSYNE_STORAGE_),
-        not the parent's nested delimiter. The __ delimiter is for .env files.
+        Note: When instantiating root Settings, nested fields use the
+        env_nested_delimiter (FIELD__SUBFIELD format). The nested class's
+        own env_prefix (e.g., MNEMOSYNE_STORAGE_) only works when
+        instantiating that class directly.
         """
         with patch.dict(
             os.environ,
-            {"MNEMOSYNE_STORAGE_PERSIST_DIRECTORY": "/nested/path"},
+            {"STORAGE__PERSIST_DIRECTORY": "/nested/path"},
         ):
             settings = Settings()
             assert settings.storage.persist_directory == "/nested/path"

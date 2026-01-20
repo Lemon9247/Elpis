@@ -1,0 +1,28 @@
+# Hermes Configuration
+# TUI client for interacting with Psyche
+
+[connection]
+# Psyche server URL (uncomment for server mode)
+# server_url = "http://localhost:8741"
+
+# Command to launch Elpis MCP server (local mode)
+elpis_command = "elpis-server"
+
+# Command to launch Mnemosyne MCP server (local mode)
+mnemosyne_command = "mnemosyne-server"
+
+[workspace]
+# Workspace directory path
+path = "."
+
+[logging]
+# Enable debug logging
+debug = false
+
+# Log file path (uncomment to enable file logging)
+# log_file = "./logs/hermes.log"
+
+# Feature flags (root-level settings)
+enable_memory = true
+enable_idle = true
+enable_consolidation = true

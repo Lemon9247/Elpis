@@ -1,0 +1,61 @@
+# Elpis Configuration
+# Inference MCP server with emotional modulation
+
+[model]
+# Inference backend: "llama-cpp" (GGUF) or "transformers" (HuggingFace)
+backend = "llama-cpp"
+
+# Path to GGUF model file or HuggingFace model ID
+path = "./data/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf"
+
+# Context window size in tokens
+# 4096 context + 20 GPU layers fits in 6GB VRAM (~3.9GB used)
+context_length = 4096
+
+# Number of layers to offload to GPU (0 = CPU only, 32 = all layers for 8B model)
+gpu_layers = 0
+
+# CPU threads to use for inference
+# Set to 1 to avoid SIGSEGV race condition in ggml multi-threading when using GPU
+n_threads = 4
+
+# Temperature for sampling (higher = more creative)
+temperature = 0.7
+
+# Top-p sampling (nucleus sampling)
+top_p = 0.9
+
+# Maximum tokens to generate per response
+max_tokens = 4096
+
+# Hardware backend: "auto" (detect), "cuda" (NVIDIA), "rocm" (AMD), "cpu"
+hardware_backend = "cpu"
+
+# Transformers-specific settings
+torch_dtype = "auto"
+steering_layer = 15
+# emotion_vectors_dir = "./data/vectors"
+
+[emotion]
+# Baseline emotional state (valence: pleasant/unpleasant, arousal: high/low energy)
+baseline_valence = 0.0
+baseline_arousal = 0.0
+
+# Rate of return to baseline per second
+decay_rate = 0.1
+
+# Maximum single-event emotional shift
+max_delta = 0.5
+
+# Global steering strength multiplier (0.0-3.0)
+steering_strength = 1.0
+
+[logging]
+# Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+level = "INFO"
+
+# Log file path
+output_file = "./logs/elpis.log"
+
+# Log format: "json" or "text"
+format = "json"
