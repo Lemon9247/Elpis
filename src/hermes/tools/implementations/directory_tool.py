@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from psyche.tools.tool_engine import ToolSettings
+    from hermes.tools.tool_engine import ToolSettings
 
 
 class PathSafetyError(Exception):

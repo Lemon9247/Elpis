@@ -41,6 +41,9 @@ MEMORY_TOOLS = {"recall_memory", "store_memory"}
 # Maximum characters for memory results to prevent context overflow
 MAX_MEMORY_RESULT_CHARS = 2000
 
+# Memory tool definitions - imported from shared location
+from psyche.memory.tool_schemas import MEMORY_TOOL_DEFINITIONS_OPENAI as MEMORY_TOOL_DEFINITIONS
+
 
 # --- OpenAI-compatible request/response models ---
 
@@ -262,10 +265,13 @@ class PsycheHTTPServer:
                 # Track connection
                 self._on_connect(connection_id)
 
-                # Update tool descriptions if provided
-                if request.tools:
-                    tool_desc = self._format_tool_descriptions(request.tools)
-                    self.core.set_tool_descriptions(tool_desc)
+                # Combine client tools with server-side memory tools
+                all_tools = list(request.tools or [])
+                all_tools.extend([Tool(**t) for t in MEMORY_TOOL_DEFINITIONS])
+
+                # Update tool descriptions with combined tools
+                tool_desc = self._format_tool_descriptions(all_tools)
+                self.core.set_tool_descriptions(tool_desc)
 
                 # Process messages
                 await self._process_messages(request.messages)

@@ -27,7 +27,7 @@ from psyche.core.context_manager import ContextConfig, ContextManager
 from psyche.core.memory_handler import MemoryHandler, MemoryHandlerConfig
 from psyche.memory.importance import calculate_importance, format_score_breakdown
 from psyche.memory.reasoning import parse_reasoning
-from psyche.shared.constants import (
+from shared.constants import (
     AUTO_STORAGE_THRESHOLD,
     MEMORY_CONTENT_TRUNCATE_LENGTH,
     MEMORY_SUMMARY_LENGTH,

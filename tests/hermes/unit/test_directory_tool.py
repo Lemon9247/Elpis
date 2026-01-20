@@ -2,8 +2,8 @@
 import pytest
 from pathlib import Path
 
-from psyche.tools.tool_engine import ToolSettings
-from psyche.tools.implementations.directory_tool import DirectoryTool, PathSafetyError
+from hermes.tools.tool_engine import ToolSettings
+from hermes.tools.implementations.directory_tool import DirectoryTool, PathSafetyError
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
-"""Tool system for Psyche."""
+"""Tool system for Hermes client."""
 
-from psyche.tools.tool_engine import ToolEngine
-from psyche.tools.tool_definitions import (
+from hermes.tools.tool_engine import ToolEngine, ToolSettings, ToolExecutionError
+from hermes.tools.tool_definitions import (
     ToolDefinition,
     ToolInput,
     ReadFileInput,
@@ -14,6 +14,8 @@ from psyche.tools.tool_definitions import (
 
 __all__ = [
     "ToolEngine",
+    "ToolSettings",
+    "ToolExecutionError",
     "ToolDefinition",
     "ToolInput",
     "ReadFileInput",

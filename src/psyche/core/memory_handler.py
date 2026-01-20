@@ -10,7 +10,7 @@ from loguru import logger
 
 from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.memory.compaction import CompactionResult, Message
-from psyche.shared.constants import (
+from shared.constants import (
     AUTO_STORAGE_THRESHOLD,
     MEMORY_CONTENT_TRUNCATE_LENGTH,
     MEMORY_SUMMARY_LENGTH,

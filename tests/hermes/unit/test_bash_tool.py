@@ -2,8 +2,8 @@
 import pytest
 from pathlib import Path
 
-from psyche.tools.tool_engine import ToolSettings
-from psyche.tools.implementations.bash_tool import BashTool, CommandSafetyError
+from hermes.tools.tool_engine import ToolSettings
+from hermes.tools.implementations.bash_tool import BashTool, CommandSafetyError
 
 
 @pytest.fixture

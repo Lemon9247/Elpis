@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from loguru import logger
 
-from psyche.shared.constants import (
+from shared.constants import (
     CONSOLIDATION_IMPORTANCE_THRESHOLD,
     MEMORY_CONTENT_TRUNCATE_LENGTH,
     MEMORY_SUMMARY_LENGTH,

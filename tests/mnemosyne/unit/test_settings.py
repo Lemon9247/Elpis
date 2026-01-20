@@ -39,7 +39,7 @@ class TestConsolidationSettings:
 
     def test_defaults(self):
         """Test default values match shared constants."""
-        from psyche.shared.constants import (
+        from shared.constants import (
             CONSOLIDATION_IMPORTANCE_THRESHOLD,
             CONSOLIDATION_SIMILARITY_THRESHOLD,
         )

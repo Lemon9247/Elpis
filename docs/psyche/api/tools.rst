@@ -5,7 +5,7 @@ Tools Module
 The tools module provides async tool execution with input validation and safety
 controls.
 
-psyche.tools.tool_engine
+hermes.tools.tool_engine
 ------------------------
 
 Tool Engine
@@ -14,7 +14,7 @@ Tool Engine
 The tool engine orchestrates tool execution, managing registration, validation,
 and async execution.
 
-.. automodule:: psyche.tools.tool_engine
+.. automodule:: hermes.tools.tool_engine
    :members:
    :undoc-members:
    :show-inheritance:
@@ -24,7 +24,7 @@ Usage Example
 
 .. code-block:: python
 
-    from psyche.tools.tool_engine import ToolEngine, ToolSettings
+    from hermes.tools.tool_engine import ToolEngine, ToolSettings
 
     engine = ToolEngine(
         workspace_dir="/path/to/workspace",
@@ -42,7 +42,7 @@ Usage Example
     if result["success"]:
         print(result["result"]["content"])
 
-psyche.tools.tool_definitions
+hermes.tools.tool_definitions
 -----------------------------
 
 Tool Definitions
@@ -50,7 +50,7 @@ Tool Definitions
 
 Tool definitions provide schemas and input validation models.
 
-.. automodule:: psyche.tools.tool_definitions
+.. automodule:: hermes.tools.tool_definitions
    :members:
    :undoc-members:
    :show-inheritance:
@@ -66,17 +66,17 @@ Each tool has a corresponding Pydantic input model:
 
    * - Model
      - Description
-   * - :class:`~psyche.tools.tool_definitions.ReadFileInput`
+   * - :class:`~hermes.tools.tool_definitions.ReadFileInput`
      - Input for read_file tool
-   * - :class:`~psyche.tools.tool_definitions.CreateFileInput`
+   * - :class:`~hermes.tools.tool_definitions.CreateFileInput`
      - Input for create_file tool
-   * - :class:`~psyche.tools.tool_definitions.EditFileInput`
+   * - :class:`~hermes.tools.tool_definitions.EditFileInput`
      - Input for edit_file tool
-   * - :class:`~psyche.tools.tool_definitions.ExecuteBashInput`
+   * - :class:`~hermes.tools.tool_definitions.ExecuteBashInput`
      - Input for execute_bash tool
-   * - :class:`~psyche.tools.tool_definitions.SearchCodebaseInput`
+   * - :class:`~hermes.tools.tool_definitions.SearchCodebaseInput`
      - Input for search_codebase tool
-   * - :class:`~psyche.tools.tool_definitions.ListDirectoryInput`
+   * - :class:`~hermes.tools.tool_definitions.ListDirectoryInput`
      - Input for list_directory tool
 
 Tool Implementations
@@ -85,7 +85,7 @@ Tool Implementations
 File Tools
 ^^^^^^^^^^
 
-.. automodule:: psyche.tools.implementations.file_tools
+.. automodule:: hermes.tools.implementations.file_tools
    :members:
    :undoc-members:
    :show-inheritance:
@@ -93,7 +93,7 @@ File Tools
 Bash Tool
 ^^^^^^^^^
 
-.. automodule:: psyche.tools.implementations.bash_tool
+.. automodule:: hermes.tools.implementations.bash_tool
    :members:
    :undoc-members:
    :show-inheritance:
@@ -101,7 +101,7 @@ Bash Tool
 Search Tool
 ^^^^^^^^^^^
 
-.. automodule:: psyche.tools.implementations.search_tool
+.. automodule:: hermes.tools.implementations.search_tool
    :members:
    :undoc-members:
    :show-inheritance:
@@ -109,7 +109,7 @@ Search Tool
 Directory Tool
 ^^^^^^^^^^^^^^
 
-.. automodule:: psyche.tools.implementations.directory_tool
+.. automodule:: hermes.tools.implementations.directory_tool
    :members:
    :undoc-members:
    :show-inheritance:
@@ -117,14 +117,14 @@ Directory Tool
 Exceptions
 ----------
 
-.. autoexception:: psyche.tools.tool_engine.ToolExecutionError
+.. autoexception:: hermes.tools.tool_engine.ToolExecutionError
    :members:
    :show-inheritance:
 
-.. autoexception:: psyche.tools.implementations.file_tools.PathSafetyError
+.. autoexception:: hermes.tools.implementations.file_tools.PathSafetyError
    :members:
    :show-inheritance:
 
-.. autoexception:: psyche.tools.implementations.bash_tool.CommandSafetyError
+.. autoexception:: hermes.tools.implementations.bash_tool.CommandSafetyError
    :members:
    :show-inheritance:

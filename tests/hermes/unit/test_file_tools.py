@@ -2,8 +2,8 @@
 import pytest
 from pathlib import Path
 
-from psyche.tools.tool_engine import ToolSettings
-from psyche.tools.implementations.file_tools import FileTools, PathSafetyError
+from hermes.tools.tool_engine import ToolSettings
+from hermes.tools.implementations.file_tools import FileTools, PathSafetyError
 
 
 @pytest.fixture

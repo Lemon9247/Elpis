@@ -1,6 +1,10 @@
-"""Shared constants and utilities for the Elpis project."""
+"""Shared utilities for cross-package dependencies in Elpis.
 
-from psyche.shared.constants import (
+This package contains code that is used across multiple packages (Elpis, Mnemosyne,
+Psyche, Hermes) to avoid circular dependencies.
+"""
+
+from shared.constants import (
     AUTO_STORAGE_THRESHOLD,
     CONSOLIDATION_IMPORTANCE_THRESHOLD,
     CONSOLIDATION_SIMILARITY_THRESHOLD,

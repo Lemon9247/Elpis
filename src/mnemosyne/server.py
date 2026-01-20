@@ -43,7 +43,7 @@ from mnemosyne.core.models import (
     MemoryType,
 )
 from mnemosyne.storage.chroma_store import ChromaMemoryStore
-from psyche.shared.constants import MEMORY_SUMMARY_LENGTH
+from shared.constants import MEMORY_SUMMARY_LENGTH
 
 if TYPE_CHECKING:
     from mnemosyne.config.settings import Settings

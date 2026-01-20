@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from psyche.tools.tool_definitions import (
+from hermes.tools.tool_definitions import (
     ToolInput,
     ReadFileInput,
     CreateFileInput,

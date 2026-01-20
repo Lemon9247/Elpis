@@ -2,7 +2,7 @@
 
 import pytest
 
-from psyche.shared.constants import (
+from shared.constants import (
     AUTO_STORAGE_THRESHOLD,
     CONSOLIDATION_IMPORTANCE_THRESHOLD,
     CONSOLIDATION_SIMILARITY_THRESHOLD,
