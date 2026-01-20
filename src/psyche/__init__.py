@@ -5,8 +5,8 @@ Psyche provides the server-side infrastructure for the Elpis system:
 - DreamHandler: Server-side dreaming when no clients connected
 - Memory: Compaction, importance scoring, and reasoning extraction
 
-Client-side handlers (ReactHandler, IdleHandler, PsycheClient) have been
-moved to the `hermes` package to make Psyche a stateless API.
+Hermes (the TUI client) connects to Psyche via HTTP and executes tools
+locally. The RemotePsycheClient in hermes.handlers provides the interface.
 """
 
 __version__ = "0.1.0"

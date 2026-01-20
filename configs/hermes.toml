@@ -1,22 +1,12 @@
 # Hermes Configuration
 # TUI client for interacting with Psyche
 
-# Feature flags (root-level settings)
-enable_memory = true
-enable_idle = true
-
 [connection]
-# Psyche server URL (uncomment for server mode)
-# server_url = "http://localhost:8741"
-
-# Command to launch Elpis MCP server (local mode)
-elpis_command = "elpis-server"
-
-# Command to launch Mnemosyne MCP server (local mode)
-mnemosyne_command = "mnemosyne-server"
+# Psyche server URL (required)
+server_url = "http://127.0.0.1:8741"
 
 [workspace]
-# Workspace directory path
+# Workspace directory path for local tool execution
 path = "."
 
 [logging]
@@ -25,34 +15,3 @@ debug = false
 
 # Log file path (uncomment to enable file logging)
 # log_file = "./logs/hermes.log"
-
-[idle]
-# Idle thinking configuration (client-side)
-# Note: Moved from psyche.toml as part of making Psyche stateless
-
-# Seconds to wait after user input before idle thinking
-post_interaction_delay = 60.0
-
-# Minimum seconds between idle tool uses
-idle_tool_cooldown_seconds = 300.0
-
-# Seconds after startup before tools allowed in idle mode
-startup_warmup_seconds = 120.0
-
-# Maximum tool iterations per idle thought
-max_idle_tool_iterations = 3
-
-# Truncate tool results to this size
-max_idle_result_chars = 8000
-
-# Temperature for reflection generation
-think_temperature = 0.7
-
-# Generation timeout in seconds
-generation_timeout = 120.0
-
-# Allow tool use during idle reflection
-allow_idle_tools = true
-
-# Use emotional modulation during idle
-emotional_modulation = true

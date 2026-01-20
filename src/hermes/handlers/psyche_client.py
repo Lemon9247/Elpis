@@ -1,15 +1,12 @@
 """
 PsycheClient - Abstract interface for connecting to Psyche Core.
 
-Supports both local (in-process) and remote (HTTP/MCP) connections.
+Provides HTTP client for connecting to a remote Psyche server.
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, List, Optional
-
-if TYPE_CHECKING:
-    from psyche.core.server import PsycheCore
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 
 class PsycheClient(ABC):
@@ -231,128 +228,6 @@ class PsycheClient(ABC):
     def is_mnemosyne_available(self) -> bool:
         """Check if Mnemosyne memory server is available."""
         ...
-
-
-class LocalPsycheClient(PsycheClient):
-    """
-    Direct in-process connection to PsycheCore.
-
-    This is the default client for single-user desktop use.
-    It delegates all operations directly to a local PsycheCore instance.
-    """
-
-    def __init__(self, core: PsycheCore):
-        """
-        Initialize the local client.
-
-        Args:
-            core: The PsycheCore instance to delegate to
-        """
-        self._core = core
-
-    @property
-    def core(self) -> PsycheCore:
-        """Access the underlying PsycheCore instance."""
-        return self._core
-
-    async def add_user_message(self, content: str) -> Optional[str]:
-        """Add user message, returns memory context if retrieved."""
-        return await self._core.add_user_message(content)
-
-    async def add_assistant_message(
-        self,
-        content: str,
-        user_message: str = "",
-        tool_results: Optional[List[Dict[str, Any]]] = None,
-    ) -> None:
-        """Add assistant message with optional tool results."""
-        await self._core.add_assistant_message(content, user_message, tool_results)
-
-    def add_tool_result(self, tool_name: str, result: str) -> None:
-        """Add a tool result to context."""
-        self._core.add_tool_result(tool_name, result)
-
-    async def generate(
-        self,
-        max_tokens: int = 2048,
-        temperature: Optional[float] = None,
-    ) -> Dict[str, Any]:
-        """Generate a response."""
-        return await self._core.generate(max_tokens, temperature)
-
-    async def generate_stream(
-        self,
-        max_tokens: int = 2048,
-        temperature: Optional[float] = None,
-        on_token: Optional[Callable[[str], None]] = None,
-    ) -> AsyncIterator[str]:
-        """Stream a response token by token."""
-        async for token in self._core.generate_stream(max_tokens, temperature, on_token):
-            yield token
-
-    async def retrieve_memories(self, query: str, n: int = 3) -> List[Dict[str, Any]]:
-        """Retrieve memories."""
-        return await self._core.retrieve_memories(query, n)
-
-    async def store_memory(
-        self,
-        content: str,
-        importance: float = 0.5,
-        tags: Optional[List[str]] = None,
-    ) -> bool:
-        """Store a memory."""
-        return await self._core.store_memory(content, importance, tags)
-
-    async def get_emotion(self) -> Dict[str, Any]:
-        """Get emotional state."""
-        return await self._core.get_emotion()
-
-    async def update_emotion(
-        self,
-        event_type: str,
-        intensity: float = 1.0,
-    ) -> Dict[str, Any]:
-        """Update emotional state."""
-        return await self._core.update_emotion(event_type, intensity)
-
-    def set_reasoning_mode(self, enabled: bool) -> None:
-        """Toggle reasoning mode."""
-        self._core.set_reasoning_mode(enabled)
-
-    async def shutdown(self) -> None:
-        """Graceful shutdown."""
-        await self._core.shutdown()
-
-    def clear_context(self) -> None:
-        """Clear working memory context."""
-        self._core.clear_context()
-
-    def initialize(self) -> None:
-        """Initialize the core with system prompt."""
-        self._core.initialize()
-
-    def set_tool_descriptions(self, descriptions: str) -> None:
-        """Set tool descriptions for the system prompt."""
-        self._core.set_tool_descriptions(descriptions)
-
-    def get_api_messages(self) -> List[Dict[str, str]]:
-        """Get current messages formatted for API calls."""
-        return self._core.get_api_messages()
-
-    @property
-    def reasoning_enabled(self) -> bool:
-        """Check if reasoning is enabled."""
-        return self._core.reasoning_enabled
-
-    @property
-    def context_summary(self) -> Dict[str, Any]:
-        """Get context summary."""
-        return self._core.context_summary
-
-    @property
-    def is_mnemosyne_available(self) -> bool:
-        """Check if Mnemosyne is available."""
-        return self._core.is_mnemosyne_available
 
 
 class RemotePsycheClient(PsycheClient):
