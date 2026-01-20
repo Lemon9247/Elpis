@@ -23,6 +23,10 @@ if TYPE_CHECKING:
     from psyche.tools.tool_engine import ToolEngine
 
 from psyche.memory.compaction import ContextCompactor
+from psyche.shared.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+)
 
 
 # Safe tools that can be used during idle thinking (read-only operations)
@@ -98,8 +102,8 @@ class IdleConfig:
     # Memory consolidation settings
     enable_consolidation: bool = True
     consolidation_check_interval: float = 300.0  # Check every 5 minutes
-    consolidation_importance_threshold: float = 0.6
-    consolidation_similarity_threshold: float = 0.85
+    consolidation_importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD
+    consolidation_similarity_threshold: float = CONSOLIDATION_SIMILARITY_THRESHOLD
 
 
 @dataclass

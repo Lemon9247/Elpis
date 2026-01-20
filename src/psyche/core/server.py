@@ -29,6 +29,11 @@ from psyche.core.context_manager import ContextConfig, ContextManager
 from psyche.core.memory_handler import MemoryHandler, MemoryHandlerConfig
 from psyche.memory.importance import calculate_importance, format_score_breakdown
 from psyche.memory.reasoning import parse_reasoning
+from psyche.shared.constants import (
+    AUTO_STORAGE_THRESHOLD,
+    MEMORY_CONTENT_TRUNCATE_LENGTH,
+    MEMORY_SUMMARY_LENGTH,
+)
 
 if TYPE_CHECKING:
     from psyche.mcp.client import ElpisClient, MnemosyneClient
@@ -72,7 +77,7 @@ class CoreConfig:
 
     # Importance scoring
     auto_storage: bool = True
-    auto_storage_threshold: float = 0.6
+    auto_storage_threshold: float = AUTO_STORAGE_THRESHOLD
 
     # Emotional modulation
     emotional_modulation: bool = True
@@ -321,7 +326,11 @@ When you need a tool, use this format and then STOP:
 
         try:
             # Create memory content with context (truncated for storage)
-            user_snippet = user_message[:300] + "..." if len(user_message) > 300 else user_message
+            user_snippet = (
+                user_message[:MEMORY_CONTENT_TRUNCATE_LENGTH] + "..."
+                if len(user_message) > MEMORY_CONTENT_TRUNCATE_LENGTH
+                else user_message
+            )
             response_snippet = response[:800] + "..." if len(response) > 800 else response
 
             memory_content = f"User: {user_snippet}\n\nAssistant: {response_snippet}"
@@ -574,7 +583,11 @@ When you need a tool, use this format and then STOP:
 
             await self.mnemosyne.store_memory(
                 content=content,
-                summary=content[:500] + "..." if len(content) > 500 else content,
+                summary=(
+                    content[:MEMORY_SUMMARY_LENGTH] + "..."
+                    if len(content) > MEMORY_SUMMARY_LENGTH
+                    else content
+                ),
                 memory_type="semantic",
                 tags=tags or [],
                 emotional_context=emotion,

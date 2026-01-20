@@ -19,6 +19,12 @@ from typing import TYPE_CHECKING, List, Optional
 
 from loguru import logger
 
+from psyche.shared.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    MEMORY_CONTENT_TRUNCATE_LENGTH,
+    MEMORY_SUMMARY_LENGTH,
+)
+
 if TYPE_CHECKING:
     from psyche.core.server import PsycheCore
 
@@ -36,11 +42,11 @@ class DreamConfig:
 
     # Generation
     dream_temperature: float = 0.9  # Higher creativity for dreams
-    dream_max_tokens: int = 500
+    dream_max_tokens: int = MEMORY_SUMMARY_LENGTH
 
     # Storage
     store_insights: bool = True  # Whether to store dream insights as memories
-    insight_importance_threshold: float = 0.6
+    insight_importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD
 
 
 # Markers that suggest a dream produced something worth storing
@@ -182,8 +188,8 @@ class DreamHandler:
             content = m.get("content", "")
             if content:
                 # Truncate long memories
-                if len(content) > 300:
-                    content = content[:300] + "..."
+                if len(content) > MEMORY_CONTENT_TRUNCATE_LENGTH:
+                    content = content[:MEMORY_CONTENT_TRUNCATE_LENGTH] + "..."
                 memory_texts.append(f"- {content}")
 
         memories_section = "\n".join(memory_texts) if memory_texts else "- No specific memories surfacing"

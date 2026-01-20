@@ -10,6 +10,11 @@ from loguru import logger
 
 from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.memory.compaction import CompactionResult, Message
+from psyche.shared.constants import (
+    AUTO_STORAGE_THRESHOLD,
+    MEMORY_CONTENT_TRUNCATE_LENGTH,
+    MEMORY_SUMMARY_LENGTH,
+)
 
 
 # Default path for local fallback storage
@@ -26,7 +31,7 @@ class MemoryHandlerConfig:
 
     # Auto-storage settings
     auto_storage: bool = True
-    auto_storage_threshold: float = 0.6
+    auto_storage_threshold: float = AUTO_STORAGE_THRESHOLD
 
 
 class MemoryHandler:
@@ -141,8 +146,8 @@ class MemoryHandler:
             display_content = summary if summary and len(content) > 200 else content
 
             # Truncate very long content
-            if len(display_content) > 300:
-                display_content = display_content[:300] + "..."
+            if len(display_content) > MEMORY_CONTENT_TRUNCATE_LENGTH:
+                display_content = display_content[:MEMORY_CONTENT_TRUNCATE_LENGTH] + "..."
 
             formatted.append(f"{i}. [{memory_type}] {display_content}")
 
@@ -182,7 +187,7 @@ class MemoryHandler:
             try:
                 await self.mnemosyne_client.store_memory(
                     content=msg.content,
-                    summary=msg.content[:500],
+                    summary=msg.content[:MEMORY_SUMMARY_LENGTH],
                     memory_type="episodic",
                     tags=["compacted", msg.role],
                     emotional_context=emotional_context,
@@ -222,7 +227,11 @@ class MemoryHandler:
         try:
             await self.mnemosyne_client.store_memory(
                 content=summary,
-                summary=summary[:500] + "..." if len(summary) > 500 else summary,
+                summary=(
+                    summary[:MEMORY_SUMMARY_LENGTH] + "..."
+                    if len(summary) > MEMORY_SUMMARY_LENGTH
+                    else summary
+                ),
                 memory_type="semantic",  # Semantic memory for distilled knowledge
                 tags=["conversation_summary", "shutdown"],
                 emotional_context=emotional_context,
@@ -254,7 +263,11 @@ class MemoryHandler:
                 if msg.role == "system":
                     continue
                 # Truncate very long messages for summarization
-                content = msg.content[:500] if len(msg.content) > 500 else msg.content
+                content = (
+                    msg.content[:MEMORY_SUMMARY_LENGTH]
+                    if len(msg.content) > MEMORY_SUMMARY_LENGTH
+                    else msg.content
+                )
                 conversation_parts.append(f"{msg.role}: {content}")
 
             if not conversation_parts:
@@ -277,7 +290,7 @@ class MemoryHandler:
 
             result = await self.elpis_client.generate(
                 messages=summary_prompt,
-                max_tokens=500,
+                max_tokens=MEMORY_SUMMARY_LENGTH,
                 temperature=0.3,
             )
 

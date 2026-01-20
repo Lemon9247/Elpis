@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from psyche.shared.constants import AUTO_STORAGE_THRESHOLD
+
 
 @dataclass
 class ImportanceScore:
@@ -127,14 +129,14 @@ def calculate_importance(
 
 def is_worth_storing(
     score: ImportanceScore,
-    threshold: float = 0.6,
+    threshold: float = AUTO_STORAGE_THRESHOLD,
 ) -> bool:
     """
     Determine if an exchange should be auto-stored based on importance score.
 
     Args:
         score: The calculated ImportanceScore
-        threshold: Minimum score required for storage (default 0.6)
+        threshold: Minimum score required for storage (default from constants)
 
     Returns:
         True if the exchange should be stored, False otherwise
