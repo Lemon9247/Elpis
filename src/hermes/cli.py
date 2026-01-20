@@ -53,6 +53,7 @@ apply_mcp_patch()
 
 # Now safe to import modules that may use logging
 from hermes.app import Hermes
+from hermes.config.settings import Settings as HermesSettings
 from hermes.handlers import (
     IdleConfig,
     IdleHandler,
@@ -306,17 +307,20 @@ def _run_local_mode(
         retrieve_memories_fn=core.retrieve_memories,
     )
 
+    # Load Hermes settings from TOML config
+    hermes_settings = HermesSettings()
+
     idle_config = IdleConfig(
-        post_interaction_delay=30.0,
-        idle_tool_cooldown_seconds=60.0,
-        startup_warmup_seconds=120.0,
-        max_idle_tool_iterations=3,
-        think_temperature=0.9,
-        generation_timeout=60.0,
-        allow_idle_tools=True,
-        emotional_modulation=True,
-        workspace_dir=workspace,
-        # Note: consolidation is now handled server-side by PsycheDaemon
+        post_interaction_delay=hermes_settings.idle.post_interaction_delay,
+        idle_tool_cooldown_seconds=hermes_settings.idle.idle_tool_cooldown_seconds,
+        startup_warmup_seconds=hermes_settings.idle.startup_warmup_seconds,
+        max_idle_tool_iterations=hermes_settings.idle.max_idle_tool_iterations,
+        max_idle_result_chars=hermes_settings.idle.max_idle_result_chars,
+        think_temperature=hermes_settings.idle.think_temperature,
+        generation_timeout=hermes_settings.idle.generation_timeout,
+        allow_idle_tools=hermes_settings.idle.allow_idle_tools,
+        emotional_modulation=hermes_settings.idle.emotional_modulation,
+        workspace_dir=workspace,  # From CLI --workspace option
     )
 
     idle_handler = IdleHandler(

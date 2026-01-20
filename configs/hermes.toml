@@ -1,6 +1,10 @@
 # Hermes Configuration
 # TUI client for interacting with Psyche
 
+# Feature flags (root-level settings)
+enable_memory = true
+enable_idle = true
+
 [connection]
 # Psyche server URL (uncomment for server mode)
 # server_url = "http://localhost:8741"
@@ -21,10 +25,6 @@ debug = false
 
 # Log file path (uncomment to enable file logging)
 # log_file = "./logs/hermes.log"
-
-# Feature flags (root-level settings)
-enable_memory = true
-enable_idle = true
 
 [idle]
 # Idle thinking configuration (client-side)
