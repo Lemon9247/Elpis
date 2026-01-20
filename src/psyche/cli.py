@@ -142,25 +142,30 @@ def main(
     apply_mcp_patch()
 
     # Import after patch
+    from psyche.config.settings import ContextSettings, MemorySettings
     from psyche.core import CoreConfig, ContextConfig, MemoryHandlerConfig
     from psyche.server.daemon import PsycheDaemon, ServerConfig
 
     # Handle 'none' for optional mnemosyne
     mnemosyne_cmd = None if mnemosyne_command.lower() == "none" else mnemosyne_command
 
+    # Load settings from environment (can be overridden via PSYCHE_* env vars)
+    context_settings = ContextSettings()
+    memory_settings = MemorySettings()
+
     # Build configuration
     # Note: These context defaults are overridden after connecting to Elpis
     # by querying its actual context_length (see daemon._init_core_with_clients)
     core_config = CoreConfig(
         context=ContextConfig(
-            max_context_tokens=3000,  # Conservative fallback
-            reserve_tokens=800,
-            checkpoint_interval=20,
+            max_context_tokens=context_settings.max_context_tokens,
+            reserve_tokens=context_settings.reserve_tokens,
+            checkpoint_interval=context_settings.checkpoint_interval,
         ),
         memory=MemoryHandlerConfig(
-            enable_auto_retrieval=True,
-            auto_storage=True,
-            auto_storage_threshold=0.6,
+            enable_auto_retrieval=memory_settings.enable_auto_retrieval,
+            auto_storage=memory_settings.auto_storage,
+            auto_storage_threshold=memory_settings.auto_storage_threshold,
         ),
         reasoning_enabled=True,
         emotional_modulation=True,
