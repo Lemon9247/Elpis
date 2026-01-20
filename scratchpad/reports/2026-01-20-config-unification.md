@@ -23,6 +23,11 @@ Created unified Pydantic settings for Mnemosyne, Psyche, and Hermes following El
 | `src/hermes/config/settings.py` | ConnectionSettings, WorkspaceSettings, LoggingSettings |
 | `src/hermes/config/__init__.py` | Exports for Hermes settings |
 | `scratchpad/plans/2026-01-20-config-system-plan.md` | Implementation plan |
+| `configs/.env.example` | Comprehensive example with all settings |
+| `configs/elpis.env.example` | Elpis-specific example |
+| `configs/mnemosyne.env.example` | Mnemosyne-specific example |
+| `configs/psyche.env.example` | Psyche-specific example |
+| `configs/hermes.env.example` | Hermes-specific example |
 
 ### Modified Files
 
@@ -103,6 +108,86 @@ memory_settings = MemorySettings()    # Reads PSYCHE_MEMORY_* env vars
 - `tests/mnemosyne/unit/test_settings.py` - 10 tests for Mnemosyne settings
 - `tests/psyche/unit/test_settings.py` - 10 tests for Psyche settings
 - `tests/psyche/unit/test_shared_constants.py` - 6 tests for shared constants
+
+## How to Use the Settings System
+
+### Quick Start
+
+1. Copy the example file to your project root:
+   ```bash
+   cp configs/.env.example .env
+   ```
+
+2. Edit `.env` to customize settings (only set what you need to override)
+
+3. Settings are automatically loaded when you import and instantiate:
+   ```python
+   from mnemosyne.config import Settings
+   settings = Settings()  # Reads from environment + .env file
+   ```
+
+### Loading Settings in Code
+
+Each package has its own settings module:
+
+```python
+# Mnemosyne
+from mnemosyne.config import Settings, StorageSettings, ConsolidationSettings
+settings = Settings()
+print(settings.storage.persist_directory)  # "./data/memory" by default
+
+# Psyche
+from psyche.config import ContextSettings, MemorySettings, IdleSettings
+context = ContextSettings()
+print(context.max_context_tokens)  # 24000 by default
+
+# Hermes
+from hermes.config import ConnectionSettings, WorkspaceSettings
+conn = ConnectionSettings()
+print(conn.server_url)  # None (local mode) by default
+```
+
+### Environment Variable Patterns
+
+Each settings class has its own prefix:
+
+| Class | Prefix | Example Variable |
+|-------|--------|------------------|
+| `StorageSettings` | `MNEMOSYNE_STORAGE_` | `MNEMOSYNE_STORAGE_PERSIST_DIRECTORY` |
+| `ContextSettings` | `PSYCHE_CONTEXT_` | `PSYCHE_CONTEXT_MAX_CONTEXT_TOKENS` |
+| `ConnectionSettings` | `HERMES_CONNECTION_` | `HERMES_CONNECTION_SERVER_URL` |
+
+### .env File vs Environment Variables
+
+Both work identically:
+
+```bash
+# In .env file or exported:
+MNEMOSYNE_STORAGE_PERSIST_DIRECTORY=/custom/path
+
+# In Python:
+settings = StorageSettings()
+assert settings.persist_directory == "/custom/path"
+```
+
+The `env_nested_delimiter="__"` in root Settings classes is for .env file parsing when using nested structures, but direct environment variables with the specific prefix are preferred.
+
+### Dynamic Context Configuration
+
+For Psyche, you can configure context settings based on Elpis capabilities:
+
+```python
+from psyche.config import ContextSettings
+
+# Option 1: Use defaults
+context = ContextSettings()
+
+# Option 2: Query Elpis and compute optimal values
+capabilities = await elpis_client.get_capabilities()
+context_length = capabilities.get("context_length", 4096)
+context = ContextSettings.from_elpis_capabilities(context_length)
+# Sets max_context_tokens to 75% and reserve_tokens to 20% of context_length
+```
 
 ## Notes
 
