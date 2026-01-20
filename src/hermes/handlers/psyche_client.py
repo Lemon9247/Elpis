@@ -608,8 +608,14 @@ class RemotePsycheClient(PsycheClient):
 
     async def get_emotion(self) -> Dict[str, Any]:
         """Get emotional state from server."""
-        # Would need dedicated endpoint or MCP
-        return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
+        await self._ensure_connected()
+        try:
+            async with self._session.get(f"{self.base_url}/v1/psyche/emotion") as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
+        except Exception:
+            return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
 
     async def update_emotion(
         self,
@@ -617,8 +623,17 @@ class RemotePsycheClient(PsycheClient):
         intensity: float = 1.0,
     ) -> Dict[str, Any]:
         """Update emotional state on server."""
-        # Would need dedicated endpoint or MCP
-        return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
+        await self._ensure_connected()
+        try:
+            async with self._session.post(
+                f"{self.base_url}/v1/psyche/emotion",
+                json={"event_type": event_type, "intensity": intensity},
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
+        except Exception:
+            return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
 
     def set_reasoning_mode(self, enabled: bool) -> None:
         """Toggle reasoning mode (local flag, server controls actual behavior)."""

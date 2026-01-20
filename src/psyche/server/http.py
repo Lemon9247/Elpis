@@ -123,6 +123,21 @@ class ChatCompletionChunk(BaseModel):
     choices: List[Dict[str, Any]]
 
 
+class EmotionResponse(BaseModel):
+    """Response model for /v1/psyche/emotion endpoint."""
+
+    valence: float
+    arousal: float
+    quadrant: str
+
+
+class EmotionUpdateRequest(BaseModel):
+    """Request model for updating emotional state."""
+
+    event_type: str
+    intensity: float = 1.0
+
+
 # --- HTTP Server ---
 
 
@@ -200,6 +215,29 @@ class PsycheHTTPServer:
                     }
                 ],
             }
+
+        @self.app.get("/v1/psyche/emotion")
+        async def get_emotion() -> EmotionResponse:
+            """Get current emotional state."""
+            emotion = await self.core.get_emotion()
+            return EmotionResponse(
+                valence=emotion.get("valence", 0.0),
+                arousal=emotion.get("arousal", 0.0),
+                quadrant=emotion.get("quadrant", "neutral"),
+            )
+
+        @self.app.post("/v1/psyche/emotion")
+        async def update_emotion(request: EmotionUpdateRequest) -> EmotionResponse:
+            """Update emotional state."""
+            emotion = await self.core.update_emotion(
+                event_type=request.event_type,
+                intensity=request.intensity,
+            )
+            return EmotionResponse(
+                valence=emotion.get("valence", 0.0),
+                arousal=emotion.get("arousal", 0.0),
+                quadrant=emotion.get("quadrant", "neutral"),
+            )
 
         @self.app.post("/v1/chat/completions")
         async def chat_completions(
