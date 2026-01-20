@@ -7,8 +7,6 @@ has no active client connections. During dreaming, Psyche:
 - Makes connections between experiences
 - Generates insights
 - Potentially stores new semantic memories
-
-This is distinct from IdleHandler (client-side workspace exploration).
 """
 
 from __future__ import annotations
@@ -70,8 +68,6 @@ class DreamHandler:
 
     Dreams are memory palace introspection - purely generative
     exploration of stored memories. No tools, no workspace access.
-
-    This is distinct from IdleHandler (client-side workspace exploration).
     """
 
     def __init__(

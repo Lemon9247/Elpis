@@ -2,15 +2,10 @@
 # Minimal settings for testing
 
 [connection]
-elpis_command = "elpis-server"
-mnemosyne_command = "mnemosyne-server"
+server_url = "http://127.0.0.1:8741"
 
 [workspace]
 path = "./test_workspace"
 
 [logging]
 debug = true
-
-enable_memory = true
-enable_idle = false
-enable_consolidation = false

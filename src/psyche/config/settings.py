@@ -105,10 +105,6 @@ class ReasoningSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PSYCHE_REASONING_")
 
 
-# Note: IdleSettings has been moved to hermes.config.settings
-# as part of making Psyche a stateless API. IdleHandler is now client-side.
-
-
 class ConsolidationSettings(BaseSettings):
     """Memory consolidation settings (triggered during idle)."""
 

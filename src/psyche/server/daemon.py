@@ -53,7 +53,7 @@ class ServerConfig:
     # Model name for API
     model_name: str = "psyche"
 
-    # Consolidation configuration (server-side, moved from IdleHandler)
+    # Consolidation configuration
     consolidation_enabled: bool = True
     consolidation_interval: float = 300.0  # Check every 5 minutes
     consolidation_importance_threshold: float = 0.6
@@ -249,7 +249,6 @@ class PsycheDaemon:
         Periodic memory consolidation loop.
 
         Runs server-side to consolidate memories independently of client connections.
-        This was moved from IdleHandler to make Psyche stateless.
         """
         logger.info(f"Consolidation loop started (interval: {self.config.consolidation_interval}s)")
 

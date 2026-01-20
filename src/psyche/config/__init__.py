@@ -1,7 +1,6 @@
 """Psyche configuration module.
 
-Note: IdleSettings has been moved to hermes.config.settings
-as part of making Psyche a stateless API.
+Psyche operates as a stateless API server. Hermes connects via HTTP.
 """
 
 from psyche.config.settings import (

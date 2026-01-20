@@ -8,13 +8,11 @@ This is the core of the Psyche substrate. It coordinates:
 - Importance scoring for auto-storage
 - Dream generation (memory-based introspection)
 
-Used by:
-- Hermes (local mode): Instantiated directly
-- Psyche server (remote mode): Wrapped by PsycheDaemon
+Used by PsycheDaemon which wraps it with an HTTP API.
+Hermes connects via RemotePsycheClient.
 
 PsycheCore does NOT:
-- Execute tools (that's ReactHandler's job)
-- Run ReAct loops (that's ReactHandler's job)
+- Execute tools (Hermes handles tool execution locally)
 - Handle UI (that's Hermes's job)
 """
 

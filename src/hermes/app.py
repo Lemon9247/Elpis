@@ -13,7 +13,6 @@ Features:
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from enum import Enum
@@ -38,14 +37,6 @@ from hermes.widgets.sidebar import StatusDisplay
 from hermes.commands import get_command, format_help_text, format_shortcut_help, format_startup_hint
 from hermes.handlers import PsycheClient, RemotePsycheClient
 from psyche.tools.tool_engine import ToolEngine
-
-
-@dataclass
-class ThoughtEvent:
-    """Event representing an internal thought."""
-    content: str
-    thought_type: str  # "reflection", "planning", "memory", "idle"
-    triggered_by: Optional[str] = None
 
 
 class AppState(Enum):
@@ -172,18 +163,6 @@ class Hermes(App):
                 if not chat.is_streaming:
                     chat.start_stream()
                 chat.append_token(token)
-            except Exception:
-                pass  # Widget may not exist during shutdown
-
-        self.call_later(update)
-
-    def _on_thought(self, thought: ThoughtEvent) -> None:
-        """Handle internal thought callback."""
-
-        def update():
-            try:
-                thoughts = self.query_one("#thoughts", ThoughtPanel)
-                thoughts.add_thought(thought.content, thought.thought_type)
             except Exception:
                 pass  # Widget may not exist during shutdown
 
