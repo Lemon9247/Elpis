@@ -1,10 +1,10 @@
 """
-ReAct loop handler for Psyche.
+ReAct loop handler for Hermes client.
 
 This module handles user input processing with the ReAct (Reasoning + Acting) loop.
 It parses tool calls from LLM responses and executes them.
 
-This is core business logic, independent of the UI layer.
+This is client orchestration logic that was moved from Psyche to Hermes.
 """
 from __future__ import annotations
 

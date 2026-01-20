@@ -1,31 +1,20 @@
-"""Handlers for Psyche business logic.
+"""Handlers for Psyche server behavior.
 
-This package contains the core handlers that implement Psyche's behavior:
-- ReactHandler: Processes user input with ReAct loop
-- IdleHandler: Manages idle thinking and memory consolidation
+This package now contains only server-side handlers:
 - DreamHandler: Server-side dreaming when no clients connected
-- PsycheClient: Abstract interface for connecting to PsycheCore
+
+The following handlers have been moved to Hermes (client-side orchestration):
+- ReactHandler -> hermes.handlers.react_handler
+- IdleHandler -> hermes.handlers.idle_handler
+- PsycheClient -> hermes.handlers.psyche_client
+
+This move is part of making Psyche a stateless memory-enriched inference API.
 """
 
 from psyche.handlers.dream_handler import DreamConfig, DreamHandler
-from psyche.handlers.idle_handler import IdleConfig, IdleHandler, ThoughtEvent
-from psyche.handlers.psyche_client import LocalPsycheClient, PsycheClient, RemotePsycheClient
-from psyche.handlers.react_handler import ReactConfig, ReactHandler, ToolCallResult
 
 __all__ = [
-    # React handler
-    "ReactHandler",
-    "ReactConfig",
-    "ToolCallResult",
-    # Idle handler
-    "IdleHandler",
-    "IdleConfig",
-    "ThoughtEvent",
-    # Dream handler
+    # Dream handler (server-side behavior)
     "DreamHandler",
     "DreamConfig",
-    # Client abstractions
-    "PsycheClient",
-    "LocalPsycheClient",
-    "RemotePsycheClient",
 ]

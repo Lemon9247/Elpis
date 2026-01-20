@@ -1,11 +1,11 @@
-"""Unit tests for IdleHandler."""
+"""Unit tests for IdleHandler (now in hermes.handlers)."""
 
 import asyncio
 import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from psyche.handlers.idle_handler import (
+from hermes.handlers.idle_handler import (
     IdleHandler,
     IdleConfig,
     ThoughtEvent,
@@ -31,16 +31,6 @@ def mock_tool_engine():
     engine = MagicMock()
     engine.execute_tool_call = AsyncMock(return_value={"success": True, "result": "test result"})
     return engine
-
-
-@pytest.fixture
-def mock_mnemosyne_client():
-    """Create a mock MnemosyneClient."""
-    client = MagicMock()
-    client.is_connected = True
-    client.should_consolidate = AsyncMock(return_value=(False, "not needed", 0, 0))
-    client.consolidate_memories = AsyncMock()
-    return client
 
 
 @pytest.fixture
@@ -334,57 +324,6 @@ class TestRecordToolUse:
         assert handler._last_idle_tool_use > old_time
 
 
-class TestMaybeConsolidate:
-    """Tests for maybe_consolidate method."""
-
-    @pytest.mark.asyncio
-    async def test_consolidation_disabled(self, handler):
-        """No consolidation when disabled."""
-        handler.config.enable_consolidation = False
-
-        result = await handler.maybe_consolidate()
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_consolidation_no_mnemosyne(self, handler):
-        """No consolidation when no Mnemosyne client."""
-        handler.mnemosyne_client = None
-        handler.config.enable_consolidation = True
-
-        result = await handler.maybe_consolidate()
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_consolidation_interval_not_reached(self, handler, mock_mnemosyne_client):
-        """No consolidation check if interval not reached."""
-        handler.mnemosyne_client = mock_mnemosyne_client
-        handler.config.enable_consolidation = True
-        handler.config.consolidation_check_interval = 300.0
-        handler._last_consolidation_check = time.time()  # Just checked
-
-        result = await handler.maybe_consolidate()
-
-        assert result is False
-        mock_mnemosyne_client.should_consolidate.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_consolidation_not_needed(self, handler, mock_mnemosyne_client):
-        """No consolidation when not recommended."""
-        handler.mnemosyne_client = mock_mnemosyne_client
-        handler.config.enable_consolidation = True
-        handler.config.consolidation_check_interval = 0  # Always check
-        handler._last_consolidation_check = 0  # Long time ago
-        mock_mnemosyne_client.should_consolidate.return_value = (False, "not needed", 0, 0)
-
-        result = await handler.maybe_consolidate()
-
-        assert result is False
-        mock_mnemosyne_client.should_consolidate.assert_called_once()
-        mock_mnemosyne_client.consolidate_memories.assert_not_called()
-
-
 class TestThoughtEvent:
     """Tests for ThoughtEvent dataclass."""
 
@@ -422,7 +361,6 @@ class TestIdleConfig:
         assert config.startup_warmup_seconds == 120.0
         assert config.max_idle_tool_iterations == 3
         assert config.allow_idle_tools is True
-        assert config.enable_consolidation is True
 
     def test_custom_config(self):
         """Test custom configuration values."""

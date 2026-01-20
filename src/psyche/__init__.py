@@ -1,11 +1,12 @@
-"""Psyche - Core library for Elpis inference with memory and emotion.
+"""Psyche - Stateless memory-enriched inference API.
 
-Psyche provides the business logic layer for the Elpis system:
+Psyche provides the server-side infrastructure for the Elpis system:
 - PsycheCore: Central coordination of inference, memory, and emotion
-- Handlers: ReactHandler and IdleHandler for processing
+- DreamHandler: Server-side dreaming when no clients connected
 - Memory: Compaction, importance scoring, and reasoning extraction
 
-For the TUI client, see the `echo` package.
+Client-side handlers (ReactHandler, IdleHandler, PsycheClient) have been
+moved to the `hermes` package to make Psyche a stateless API.
 """
 
 __version__ = "0.1.0"
@@ -13,18 +14,8 @@ __version__ = "0.1.0"
 # Core exports
 from psyche.core import ContextConfig, CoreConfig, MemoryHandlerConfig, PsycheCore
 
-# Handler exports
-from psyche.handlers import (
-    IdleConfig,
-    IdleHandler,
-    LocalPsycheClient,
-    PsycheClient,
-    ReactConfig,
-    ReactHandler,
-    RemotePsycheClient,
-    ThoughtEvent,
-    ToolCallResult,
-)
+# Handler exports (only server-side handlers remain)
+from psyche.handlers import DreamConfig, DreamHandler
 
 __all__ = [
     # Core
@@ -32,14 +23,7 @@ __all__ = [
     "CoreConfig",
     "ContextConfig",
     "MemoryHandlerConfig",
-    # Handlers
-    "ReactHandler",
-    "ReactConfig",
-    "ToolCallResult",
-    "IdleHandler",
-    "IdleConfig",
-    "ThoughtEvent",
-    "PsycheClient",
-    "LocalPsycheClient",
-    "RemotePsycheClient",
+    # Server-side handlers
+    "DreamHandler",
+    "DreamConfig",
 ]

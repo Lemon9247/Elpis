@@ -1,9 +1,12 @@
-"""Psyche configuration module."""
+"""Psyche configuration module.
+
+Note: IdleSettings has been moved to hermes.config.settings
+as part of making Psyche a stateless API.
+"""
 
 from psyche.config.settings import (
     ConsolidationSettings,
     ContextSettings,
-    IdleSettings,
     LoggingSettings,
     MemorySettings,
     ReasoningSettings,
@@ -17,7 +20,6 @@ __all__ = [
     "ContextSettings",
     "MemorySettings",
     "ReasoningSettings",
-    "IdleSettings",
     "ConsolidationSettings",
     "ServerSettings",
     "ToolSettings",

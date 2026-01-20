@@ -53,6 +53,12 @@ class ServerConfig:
     # Model name for API
     model_name: str = "psyche"
 
+    # Consolidation configuration (server-side, moved from IdleHandler)
+    consolidation_enabled: bool = True
+    consolidation_interval: float = 300.0  # Check every 5 minutes
+    consolidation_importance_threshold: float = 0.6
+    consolidation_similarity_threshold: float = 0.85
+
 
 class PsycheDaemon:
     """
@@ -84,6 +90,7 @@ class PsycheDaemon:
         # Connection tracking
         self._connections: Set[str] = set()
         self._dream_task: Optional[asyncio.Task] = None
+        self._consolidation_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
 
         # Server state
@@ -116,6 +123,13 @@ class PsycheDaemon:
                     # Create dream handler (if enabled)
                     if self.config.dream_enabled:
                         await self._init_dream_handler()
+
+                    # Start consolidation loop (if enabled)
+                    if self.config.consolidation_enabled and self.mnemosyne_client:
+                        self._consolidation_task = asyncio.create_task(
+                            self._consolidation_loop()
+                        )
+                        logger.info("Started server-side consolidation loop")
 
                     # Start serving
                     self._running = True
@@ -230,6 +244,69 @@ class PsycheDaemon:
         # Run until shutdown requested
         await server.serve()
 
+    async def _consolidation_loop(self) -> None:
+        """
+        Periodic memory consolidation loop.
+
+        Runs server-side to consolidate memories independently of client connections.
+        This was moved from IdleHandler to make Psyche stateless.
+        """
+        logger.info(f"Consolidation loop started (interval: {self.config.consolidation_interval}s)")
+
+        try:
+            while self._running:
+                await asyncio.sleep(self.config.consolidation_interval)
+
+                if not self._running:
+                    break
+
+                await self._maybe_consolidate()
+
+        except asyncio.CancelledError:
+            logger.debug("Consolidation loop cancelled")
+        except Exception as e:
+            logger.error(f"Consolidation loop error: {e}")
+
+    async def _maybe_consolidate(self) -> bool:
+        """
+        Check and run memory consolidation if needed.
+
+        Returns:
+            True if consolidation was run, False otherwise
+        """
+        if not self.mnemosyne_client or not self.mnemosyne_client.is_connected:
+            return False
+
+        try:
+            # Check if consolidation is recommended
+            should_consolidate, reason, short_term, long_term = (
+                await self.mnemosyne_client.should_consolidate()
+            )
+
+            if not should_consolidate:
+                logger.debug(f"Consolidation not needed: {reason}")
+                return False
+
+            logger.info(f"Starting memory consolidation: {reason}")
+
+            # Run consolidation
+            result = await self.mnemosyne_client.consolidate_memories(
+                importance_threshold=self.config.consolidation_importance_threshold,
+                similarity_threshold=self.config.consolidation_similarity_threshold,
+            )
+
+            logger.info(
+                f"Consolidation complete: promoted {result.memories_promoted}, "
+                f"archived {result.memories_archived}, "
+                f"clusters formed: {result.clusters_formed}"
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Memory consolidation failed: {e}")
+            return False
+
     # --- Connection Tracking ---
 
     def on_client_connect(self, client_id: str) -> None:
@@ -303,6 +380,15 @@ class PsycheDaemon:
 
         # Cancel dreaming
         self._cancel_dreaming()
+
+        # Cancel consolidation loop
+        if self._consolidation_task and not self._consolidation_task.done():
+            self._consolidation_task.cancel()
+            try:
+                await self._consolidation_task
+            except asyncio.CancelledError:
+                pass
+            self._consolidation_task = None
 
         # Shutdown core (consolidate memories)
         if self.core:

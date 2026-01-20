@@ -1,10 +1,10 @@
-"""Unit tests for ReactHandler."""
+"""Unit tests for ReactHandler (now in hermes.handlers)."""
 
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from psyche.handlers import ReactHandler, ReactConfig, ToolCallResult
+from hermes.handlers import ReactHandler, ReactConfig, ToolCallResult
 from psyche.memory.compaction import ContextCompactor, create_message
 
 

@@ -46,8 +46,7 @@ from hermes.widgets import (
 )
 from hermes.widgets.sidebar import StatusDisplay
 from hermes.commands import get_command, format_help_text, format_shortcut_help, format_startup_hint
-from psyche.handlers import PsycheClient, ReactHandler
-from psyche.handlers import IdleHandler, ThoughtEvent
+from hermes.handlers import PsycheClient, ReactHandler, IdleHandler, ThoughtEvent
 from psyche.tools.tool_engine import ToolEngine
 
 if TYPE_CHECKING:

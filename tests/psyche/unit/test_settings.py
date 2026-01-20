@@ -1,4 +1,8 @@
-"""Tests for Psyche settings."""
+"""Tests for Psyche settings.
+
+Note: IdleSettings tests have been moved to tests/hermes/
+as part of making Psyche a stateless API.
+"""
 
 import os
 from unittest.mock import patch
@@ -8,7 +12,6 @@ import pytest
 from psyche.config.settings import (
     ConsolidationSettings,
     ContextSettings,
-    IdleSettings,
     MemorySettings,
     ReasoningSettings,
     ServerSettings,
@@ -133,7 +136,7 @@ class TestSettings:
         assert isinstance(settings.context, ContextSettings)
         assert isinstance(settings.memory, MemorySettings)
         assert isinstance(settings.reasoning, ReasoningSettings)
-        assert isinstance(settings.idle, IdleSettings)
+        # Note: idle settings removed - now in hermes.config.settings
         assert isinstance(settings.consolidation, ConsolidationSettings)
         assert isinstance(settings.server, ServerSettings)
         assert isinstance(settings.tools, ToolSettings)

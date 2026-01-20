@@ -105,55 +105,8 @@ class ReasoningSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PSYCHE_REASONING_")
 
 
-class IdleSettings(BaseSettings):
-    """Idle behavior configuration (client-side)."""
-
-    post_interaction_delay: float = Field(
-        default=60.0,
-        ge=0.0,
-        description="Seconds to wait after user input before idle thinking",
-    )
-    idle_tool_cooldown_seconds: float = Field(
-        default=300.0,
-        ge=0.0,
-        description="Minimum seconds between idle tool uses",
-    )
-    startup_warmup_seconds: float = Field(
-        default=120.0,
-        ge=0.0,
-        description="Seconds after startup before tools allowed in idle mode",
-    )
-    max_idle_tool_iterations: int = Field(
-        default=3,
-        ge=0,
-        description="Maximum tool iterations per idle thought",
-    )
-    max_idle_result_chars: int = Field(
-        default=8000,
-        ge=100,
-        description="Truncate tool results to this size",
-    )
-    think_temperature: float = Field(
-        default=0.7,
-        ge=0.0,
-        le=2.0,
-        description="Temperature for reflection generation",
-    )
-    generation_timeout: float = Field(
-        default=120.0,
-        ge=1.0,
-        description="Generation timeout in seconds",
-    )
-    allow_idle_tools: bool = Field(
-        default=True,
-        description="Allow tool use during idle reflection",
-    )
-    emotional_modulation: bool = Field(
-        default=True,
-        description="Use emotional modulation during idle",
-    )
-
-    model_config = SettingsConfigDict(env_prefix="PSYCHE_IDLE_")
+# Note: IdleSettings has been moved to hermes.config.settings
+# as part of making Psyche a stateless API. IdleHandler is now client-side.
 
 
 class ConsolidationSettings(BaseSettings):
@@ -270,7 +223,7 @@ class Settings(BaseSettings):
     context: ContextSettings = Field(default_factory=ContextSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     reasoning: ReasoningSettings = Field(default_factory=ReasoningSettings)
-    idle: IdleSettings = Field(default_factory=IdleSettings)
+    # Note: idle settings removed - now in hermes.config.settings
     consolidation: ConsolidationSettings = Field(default_factory=ConsolidationSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)

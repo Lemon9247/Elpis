@@ -1,10 +1,11 @@
 """
-Idle thinking handler for Psyche.
+Idle thinking handler for Hermes client.
 
 This module handles autonomous "dreaming" when the user is idle.
-It generates reflective thoughts and manages memory consolidation.
+It generates reflective thoughts about the workspace.
 
-This is core business logic, independent of the UI layer.
+This is client orchestration logic that was moved from Psyche to Hermes.
+Memory consolidation is now handled server-side (PsycheDaemon).
 """
 from __future__ import annotations
 
@@ -19,14 +20,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List, Optional
 from loguru import logger
 
 if TYPE_CHECKING:
-    from psyche.mcp.client import ElpisClient, MnemosyneClient
+    from psyche.mcp.client import ElpisClient
     from psyche.tools.tool_engine import ToolEngine
 
 from psyche.memory.compaction import ContextCompactor
-from psyche.shared.constants import (
-    CONSOLIDATION_IMPORTANCE_THRESHOLD,
-    CONSOLIDATION_SIMILARITY_THRESHOLD,
-)
 
 
 # Safe tools that can be used during idle thinking (read-only operations)
@@ -67,7 +64,8 @@ SENSITIVE_PATH_PATTERNS: FrozenSet[str] = frozenset({
 class IdleConfig:
     """Configuration for idle handler.
 
-    Mirrors relevant settings from ServerConfig in server.py.
+    Note: Consolidation settings have been removed - consolidation is now
+    handled server-side by PsycheDaemon.
     """
     # Time to wait after user interaction before starting idle thinking
     post_interaction_delay: float = 60.0
@@ -99,19 +97,10 @@ class IdleConfig:
     # Workspace directory (for path validation)
     workspace_dir: str = "."
 
-    # Memory consolidation settings
-    enable_consolidation: bool = True
-    consolidation_check_interval: float = 300.0  # Check every 5 minutes
-    consolidation_importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD
-    consolidation_similarity_threshold: float = CONSOLIDATION_SIMILARITY_THRESHOLD
-
 
 @dataclass
 class ThoughtEvent:
-    """Event representing an internal thought.
-
-    Mirrors ThoughtEvent from server.py.
-    """
+    """Event representing an internal thought."""
     content: str
     thought_type: str  # "reflection", "planning", "memory", "idle"
     triggered_by: Optional[str] = None
@@ -119,7 +108,7 @@ class ThoughtEvent:
 
 class IdleHandler:
     """
-    Handles idle thinking and memory consolidation.
+    Handles idle thinking and workspace exploration.
 
     When the user is idle (no input for a configured period), this handler
     generates autonomous "reflections" - thoughts about the workspace,
@@ -132,16 +121,12 @@ class IdleHandler:
     - Rate limiting prevents excessive tool use
     - Warmup period after startup before tools are enabled
 
-    Memory consolidation:
-    - Periodically checks if consolidation is needed
-    - Promotes important short-term memories to long-term storage
-    - Clusters similar memories together
+    Note: Memory consolidation has been moved to server-side (PsycheDaemon).
 
     Responsibilities:
     - Generate reflective thoughts when user is idle
     - Manage safe tool usage during idle (read-only only)
     - Validate paths and tool calls for security
-    - Trigger memory consolidation periodically
     - Respect rate limits and safety constraints
     - Stream thinking tokens to UI callback
 
@@ -149,7 +134,6 @@ class IdleHandler:
     - elpis_client: For LLM inference
     - tool_engine: For executing safe tools
     - compactor: For getting conversation context
-    - mnemosyne_client: For memory storage/retrieval
     """
 
     def __init__(
@@ -157,7 +141,6 @@ class IdleHandler:
         elpis_client: ElpisClient,
         compactor: ContextCompactor,
         tool_engine: Optional[ToolEngine] = None,
-        mnemosyne_client: Optional[MnemosyneClient] = None,
         config: Optional[IdleConfig] = None,
     ):
         """
@@ -167,26 +150,23 @@ class IdleHandler:
             elpis_client: Client for LLM inference
             compactor: Context compactor for getting conversation context
             tool_engine: Optional engine for executing tools
-            mnemosyne_client: Optional client for Mnemosyne memory server
             config: Configuration options
         """
         self.client = elpis_client
         self.compactor = compactor
         self.tool_engine = tool_engine
-        self.mnemosyne_client = mnemosyne_client
         self.config = config or IdleConfig()
 
         # Timing tracking
         self._startup_time: float = time.time()
         self._last_idle_tool_use: float = 0.0
         self._last_user_interaction: float = 0.0
-        self._last_consolidation_check: float = 0.0
 
         # State tracking
         self._is_thinking = False
         self._interrupt_event = asyncio.Event()
 
-        # Interaction counter for consolidation triggers
+        # Interaction counter
         self._interaction_count = 0
 
     def can_start_thinking(self) -> bool:
@@ -430,17 +410,10 @@ class IdleHandler:
                 if on_thought:
                     on_thought(thought)
 
-                # Check if memory consolidation is needed
-                await self.maybe_consolidate()
-
                 return response_text
 
             # Max iterations reached
             logger.debug("Max idle tool iterations reached")
-
-            # Still check consolidation even if max iterations reached
-            await self.maybe_consolidate()
-
             return None
 
         finally:
@@ -626,63 +599,6 @@ You MUST use the actual tools to see real data.
             return True
         except ValueError:
             logger.warning(f"Path escapes workspace in idle reflection: {path}")
-            return False
-
-    async def maybe_consolidate(self) -> bool:
-        """
-        Check and run memory consolidation if needed.
-
-        Called during idle periods to:
-        1. Check if enough time has passed since last consolidation
-        2. Ask Mnemosyne if consolidation is recommended
-        3. Run consolidation if needed
-
-        Returns:
-            True if consolidation was run, False otherwise
-        """
-        # Skip if consolidation is disabled or no mnemosyne client
-        if not self.config.enable_consolidation or not self.mnemosyne_client:
-            return False
-
-        # Check if enough time has passed since last consolidation check
-        now = time.time()
-        time_since_last_check = now - self._last_consolidation_check
-        if time_since_last_check < self.config.consolidation_check_interval:
-            return False
-
-        self._last_consolidation_check = now
-
-        try:
-            # Check if Mnemosyne is connected
-            if not self.mnemosyne_client.is_connected:
-                logger.debug("Mnemosyne not connected, skipping consolidation check")
-                return False
-
-            # Check if consolidation is recommended
-            should_consolidate, reason, short_term, long_term = await self.mnemosyne_client.should_consolidate()
-
-            if not should_consolidate:
-                logger.debug(f"Consolidation not needed: {reason}")
-                return False
-
-            logger.info(f"Starting memory consolidation: {reason}")
-
-            # Run consolidation
-            result = await self.mnemosyne_client.consolidate_memories(
-                importance_threshold=self.config.consolidation_importance_threshold,
-                similarity_threshold=self.config.consolidation_similarity_threshold,
-            )
-
-            logger.info(
-                f"Consolidation complete: promoted {result.memories_promoted}, "
-                f"archived {result.memories_archived}, "
-                f"clusters formed: {result.clusters_formed}"
-            )
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Memory consolidation failed: {e}")
             return False
 
     def record_user_interaction(self) -> None:

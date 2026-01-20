@@ -237,8 +237,32 @@ Your dream:"""
             )
             logger.info("Stored dream insight as memory")
 
+            # Trigger consolidation after storing dream insights
+            # This helps integrate new dream insights with existing memories
+            await self._maybe_trigger_consolidation()
+
         except Exception as e:
             logger.warning(f"Failed to store dream insight: {e}")
+
+    async def _maybe_trigger_consolidation(self) -> None:
+        """Optionally trigger consolidation after dream insights."""
+        if not self.core.is_mnemosyne_available:
+            return
+
+        try:
+            # Check if Mnemosyne client is available through core
+            mnemosyne = getattr(self.core, '_mnemosyne', None)
+            if mnemosyne and mnemosyne.is_connected:
+                should_consolidate, reason, _, _ = await mnemosyne.should_consolidate()
+                if should_consolidate:
+                    logger.info(f"Post-dream consolidation triggered: {reason}")
+                    result = await mnemosyne.consolidate_memories()
+                    logger.info(
+                        f"Post-dream consolidation: promoted {result.memories_promoted}, "
+                        f"clusters: {result.clusters_formed}"
+                    )
+        except Exception as e:
+            logger.debug(f"Post-dream consolidation skipped: {e}")
 
     def _log_dream(self, content: str, memories: List[dict]) -> None:
         """Log dream for debugging/introspection."""

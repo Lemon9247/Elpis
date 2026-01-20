@@ -53,8 +53,7 @@ apply_mcp_patch()
 
 # Now safe to import modules that may use logging
 from hermes.app import Hermes
-from psyche.core import CoreConfig, ContextConfig, MemoryHandlerConfig, PsycheCore
-from psyche.handlers import (
+from hermes.handlers import (
     IdleConfig,
     IdleHandler,
     LocalPsycheClient,
@@ -63,6 +62,7 @@ from psyche.handlers import (
     ReactHandler,
     RemotePsycheClient,
 )
+from psyche.core import CoreConfig, ContextConfig, MemoryHandlerConfig, PsycheCore
 from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.tools import ToolEngine
 from psyche.tools.implementations.memory_tools import MemoryTools
@@ -316,16 +316,15 @@ def _run_local_mode(
         allow_idle_tools=True,
         emotional_modulation=True,
         workspace_dir=workspace,
-        enable_consolidation=enable_consolidation,
-        consolidation_check_interval=300.0,
+        # Note: consolidation is now handled server-side by PsycheDaemon
     )
 
     idle_handler = IdleHandler(
         elpis_client=elpis_client,
         compactor=compactor,
         tool_engine=tool_engine,
-        mnemosyne_client=mnemosyne_client,
         config=idle_config,
+        # Note: mnemosyne_client no longer needed - consolidation moved to server
     )
 
     # --- Create client wrapper ---

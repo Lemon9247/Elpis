@@ -34,33 +34,8 @@ auto_storage_threshold = 0.6
 # Enable <reasoning> tags in responses
 enabled = true
 
-[idle]
-# Seconds to wait after user input before idle thinking
-post_interaction_delay = 60.0
-
-# Minimum seconds between idle tool uses
-idle_tool_cooldown_seconds = 300.0
-
-# Seconds after startup before tools allowed in idle mode
-startup_warmup_seconds = 120.0
-
-# Maximum tool iterations per idle thought
-max_idle_tool_iterations = 3
-
-# Truncate tool results to this size
-max_idle_result_chars = 8000
-
-# Temperature for reflection generation
-think_temperature = 0.7
-
-# Generation timeout in seconds
-generation_timeout = 120.0
-
-# Allow tool use during idle reflection
-allow_idle_tools = true
-
-# Use emotional modulation during idle
-emotional_modulation = true
+# Note: [idle] section removed - idle settings are now in hermes.toml
+# (IdleHandler moved to Hermes as part of making Psyche stateless)
 
 [consolidation]
 # Enable memory consolidation during idle
