@@ -21,24 +21,37 @@ MCP Tools:
 - get_memory_stats: Database statistics
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import sys
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from loguru import logger
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Resource, TextContent, Tool
 
-from mnemosyne.core.models import Memory, MemoryType, MemoryStatus, EmotionalContext, ConsolidationConfig
 from mnemosyne.core.consolidator import MemoryConsolidator
+from mnemosyne.core.models import (
+    ConsolidationConfig,
+    EmotionalContext,
+    Memory,
+    MemoryStatus,
+    MemoryType,
+)
 from mnemosyne.storage.chroma_store import ChromaMemoryStore
+from psyche.shared.constants import MEMORY_SUMMARY_LENGTH
+
+if TYPE_CHECKING:
+    from mnemosyne.config.settings import Settings
 
 
 # Global state
 memory_store: Optional[ChromaMemoryStore] = None
+_settings: Optional[Settings] = None
 server = Server("mnemosyne")
 
 
@@ -229,7 +242,7 @@ async def _handle_store_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     # Create memory
     memory = Memory(
         content=args["content"],
-        summary=args.get("summary", args["content"][:500]),
+        summary=args.get("summary", args["content"][:MEMORY_SUMMARY_LENGTH]),
         memory_type=MemoryType(args.get("memory_type", "episodic")),
         tags=args.get("tags", []),
         emotional_context=emotional_ctx,
@@ -290,10 +303,17 @@ async def _handle_get_stats() -> Dict[str, Any]:
 
 async def _handle_consolidate_memories(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle consolidate_memories tool call."""
+    # Get defaults from settings if available
+    default_importance = 0.6
+    default_similarity = 0.85
+    if _settings:
+        default_importance = _settings.consolidation.importance_threshold
+        default_similarity = _settings.consolidation.similarity_threshold
+
     # Build config with optional overrides
     config = ConsolidationConfig(
-        importance_threshold=args.get("importance_threshold", 0.6),
-        similarity_threshold=args.get("similarity_threshold", 0.85),
+        importance_threshold=args.get("importance_threshold", default_importance),
+        similarity_threshold=args.get("similarity_threshold", default_similarity),
     )
 
     # Create consolidator and run in thread pool (long-running operation)
@@ -410,12 +430,29 @@ async def _handle_get_recent_memories(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def initialize(persist_directory: str = "./data/memory") -> None:
-    """Initialize server components."""
-    global memory_store
+def initialize(
+    persist_directory: Optional[str] = None,
+    settings: Optional[Settings] = None,
+) -> None:
+    """Initialize server components.
+
+    Args:
+        persist_directory: Override storage directory (takes precedence over settings)
+        settings: Mnemosyne settings instance (loaded from env if not provided)
+    """
+    global memory_store, _settings
+
+    # Load settings if not provided
+    if settings is None:
+        from mnemosyne.config.settings import Settings
+        settings = Settings()
+    _settings = settings
 
     logger.info("Initializing Mnemosyne memory server...")
-    memory_store = ChromaMemoryStore(persist_directory=persist_directory)
+    memory_store = ChromaMemoryStore(
+        persist_directory=persist_directory,
+        settings=settings.storage,
+    )
     logger.info("Memory store initialized")
 
 

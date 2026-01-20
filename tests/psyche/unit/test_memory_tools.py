@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from psyche.shared.constants import MEMORY_SUMMARY_LENGTH
 from psyche.tools.implementations.memory_tools import MemoryTools
 from psyche.tools.tool_definitions import RecallMemoryInput, StoreMemoryInput
 
@@ -239,11 +240,12 @@ class TestMemoryToolsStore:
 
     async def test_auto_generated_summary(self, memory_tools, mock_client):
         """Test auto-generated summary for long content."""
-        long_content = "A" * 200
+        # Create content longer than MEMORY_SUMMARY_LENGTH to trigger truncation
+        long_content = "A" * (MEMORY_SUMMARY_LENGTH + 100)
 
         await memory_tools.store_memory(content=long_content)
 
         call_args = mock_client.store_memory.call_args
         summary = call_args.kwargs["summary"]
-        assert len(summary) == 103  # 100 chars + "..."
+        assert len(summary) == MEMORY_SUMMARY_LENGTH + 3  # truncated + "..."
         assert summary.endswith("...")

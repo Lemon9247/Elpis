@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from psyche.mcp.client import MnemosyneClient, EmotionalState
+from psyche.mcp.client import EmotionalState, MnemosyneClient
+from psyche.shared.constants import MEMORY_SUMMARY_LENGTH
 
 
 class MemoryTools:
@@ -97,7 +98,9 @@ class MemoryTools:
         try:
             # Auto-generate summary if not provided
             if not summary:
-                summary = content[:500] + ("..." if len(content) > 500 else "")
+                summary = content[:MEMORY_SUMMARY_LENGTH] + (
+                    "..." if len(content) > MEMORY_SUMMARY_LENGTH else ""
+                )
 
             # Get current emotional context if available
             emotional_context = None

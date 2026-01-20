@@ -1,12 +1,14 @@
 """ChromaDB-based memory storage."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 try:
     import chromadb
-    from chromadb.config import Settings
+    from chromadb.config import Settings as ChromaSettings
     CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
@@ -21,45 +23,61 @@ from loguru import logger
 
 from mnemosyne.core.models import Memory, MemoryStatus
 
+if TYPE_CHECKING:
+    from mnemosyne.config.settings import StorageSettings
+
 
 class ChromaMemoryStore:
     """
     Memory storage using ChromaDB vector database.
-    
+
     Stores memories with embeddings for semantic search.
     """
 
     def __init__(
         self,
-        persist_directory: str = "./data/memory",
-        embedding_model: str = "all-MiniLM-L6-v2",
+        persist_directory: Optional[str] = None,
+        embedding_model: Optional[str] = None,
+        settings: Optional[StorageSettings] = None,
     ):
         """
         Initialize the memory store.
-        
+
         Args:
-            persist_directory: Where to store the database
-            embedding_model: SentenceTransformer model name
+            persist_directory: Where to store the database (overrides settings)
+            embedding_model: SentenceTransformer model name (overrides settings)
+            settings: StorageSettings instance (provides defaults)
         """
         if not CHROMADB_AVAILABLE:
             raise RuntimeError(
                 "chromadb is required for ChromaMemoryStore. "
                 "Install with: pip install chromadb"
             )
-        
+
         if not TRANSFORMERS_AVAILABLE:
             raise RuntimeError(
                 "sentence-transformers is required. "
                 "Install with: pip install sentence-transformers"
             )
 
-        self.persist_directory = Path(persist_directory)
+        # Load settings if not provided
+        if settings is None:
+            from mnemosyne.config.settings import StorageSettings
+            settings = StorageSettings()
+
+        # Use explicit args if provided, otherwise fall back to settings
+        _persist_directory = persist_directory or settings.persist_directory
+        _embedding_model = embedding_model or settings.embedding_model
+        _short_term_collection = settings.short_term_collection
+        _long_term_collection = settings.long_term_collection
+
+        self.persist_directory = Path(_persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
         # Initialize ChromaDB client
         self.client = chromadb.PersistentClient(
             path=str(self.persist_directory),
-            settings=Settings(
+            settings=ChromaSettings(
                 anonymized_telemetry=False,
                 allow_reset=True,
             ),
@@ -67,18 +85,18 @@ class ChromaMemoryStore:
 
         # Get or create collections
         self.short_term = self.client.get_or_create_collection(
-            name="short_term_memory",
+            name=_short_term_collection,
             metadata={"description": "Recent memories, not yet consolidated"},
         )
 
         self.long_term = self.client.get_or_create_collection(
-            name="long_term_memory",
+            name=_long_term_collection,
             metadata={"description": "Consolidated long-term memories"},
         )
 
         # Initialize embedding model
-        logger.info(f"Loading embedding model: {embedding_model}")
-        self.embedding_model = SentenceTransformer(embedding_model)
+        logger.info(f"Loading embedding model: {_embedding_model}")
+        self.embedding_model = SentenceTransformer(_embedding_model)
         logger.info("Memory store initialized")
 
     def add_memory(self, memory: Memory) -> None:

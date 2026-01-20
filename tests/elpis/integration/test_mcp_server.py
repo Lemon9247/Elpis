@@ -72,11 +72,12 @@ class TestMCPServerTools:
         assert "update_emotion" in tool_names
         assert "reset_emotion" in tool_names
         assert "get_emotion" in tool_names
+        assert "get_capabilities" in tool_names
         # Streaming tools
         assert "generate_stream_start" in tool_names
         assert "generate_stream_read" in tool_names
         assert "generate_stream_cancel" in tool_names
-        assert len(tools) == 8
+        assert len(tools) == 9
 
     @pytest.mark.asyncio
     @pytest.mark.integration

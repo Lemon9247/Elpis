@@ -236,19 +236,30 @@ def _run_local_mode(
         logger.info(f"Mnemosyne client configured: {mnemosyne_command}")
 
     # --- Create PsycheCore (memory coordination layer) ---
-    # TODO: Query Elpis capabilities after connecting to get actual context_length
-    # For now, use conservative defaults matching Elpis's default 4096 context
-    # (75% for context, 20% reserve for response)
+    # NOTE: Context size uses conservative defaults based on Elpis's 4096 default.
+    # To properly query Elpis capabilities (like daemon.py does), we'd need to:
+    # 1. Connect to Elpis MCP server first
+    # 2. Query get_capabilities for actual context_length
+    # 3. Then create CoreConfig with ContextSettings.from_elpis_capabilities()
+    # This requires refactoring the startup sequence - tracked as future work.
+    # See psyche/config/settings.py for ContextSettings.from_elpis_capabilities()
+    from psyche.config.settings import ContextSettings, MemorySettings
+    from psyche.shared.constants import AUTO_STORAGE_THRESHOLD
+
+    # Use settings defaults (can be overridden via env vars)
+    context_settings = ContextSettings()
+    memory_settings = MemorySettings()
+
     core_config = CoreConfig(
         context=ContextConfig(
-            max_context_tokens=3000,
-            reserve_tokens=800,
-            checkpoint_interval=20,
+            max_context_tokens=context_settings.max_context_tokens,
+            reserve_tokens=context_settings.reserve_tokens,
+            checkpoint_interval=context_settings.checkpoint_interval,
         ),
         memory=MemoryHandlerConfig(
-            enable_auto_retrieval=True,
-            auto_storage=True,
-            auto_storage_threshold=0.6,
+            enable_auto_retrieval=memory_settings.enable_auto_retrieval,
+            auto_storage=memory_settings.auto_storage,
+            auto_storage_threshold=memory_settings.auto_storage_threshold,
         ),
         reasoning_enabled=True,
         emotional_modulation=True,
