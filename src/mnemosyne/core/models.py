@@ -6,6 +6,11 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from mnemosyne.core.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+)
+
 
 class MemoryType(Enum):
     """Classification of memory types."""
@@ -174,11 +179,11 @@ class Memory:
 class ConsolidationConfig:
     """Configuration for memory consolidation."""
 
-    importance_threshold: float = 0.6       # Min importance for promotion
+    importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD  # Min importance for promotion
     min_age_hours: int = 1                  # Min age before eligible
     max_batch_size: int = 50                # Max memories per consolidation
     buffer_threshold: int = 100             # Recommend consolidation trigger
-    similarity_threshold: float = 0.85      # For clustering similar memories
+    similarity_threshold: float = CONSOLIDATION_SIMILARITY_THRESHOLD  # For clustering similar memories
     min_cluster_size: int = 2               # Min memories to form cluster
 
 

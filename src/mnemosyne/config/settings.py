@@ -10,6 +10,11 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from mnemosyne.core.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+)
+
 
 class StorageSettings(BaseSettings):
     """ChromaDB storage configuration."""
@@ -38,7 +43,7 @@ class ConsolidationSettings(BaseSettings):
     """Memory consolidation configuration."""
 
     importance_threshold: float = Field(
-        default=0.6,
+        default=CONSOLIDATION_IMPORTANCE_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Minimum importance score for promotion to long-term",
@@ -59,7 +64,7 @@ class ConsolidationSettings(BaseSettings):
         description="Memory count that triggers consolidation recommendation",
     )
     similarity_threshold: float = Field(
-        default=0.85,
+        default=CONSOLIDATION_SIMILARITY_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Cosine similarity threshold for clustering",
