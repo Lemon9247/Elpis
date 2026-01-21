@@ -38,8 +38,8 @@ class TestConsolidationSettings:
     """Test ConsolidationSettings configuration."""
 
     def test_defaults(self):
-        """Test default values match shared constants."""
-        from shared.constants import (
+        """Test default values match constants."""
+        from mnemosyne.core.constants import (
             CONSOLIDATION_IMPORTANCE_THRESHOLD,
             CONSOLIDATION_SIMILARITY_THRESHOLD,
         )
