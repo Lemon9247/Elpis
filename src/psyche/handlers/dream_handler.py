@@ -17,11 +17,11 @@ from typing import TYPE_CHECKING, List, Optional
 
 from loguru import logger
 
-from shared.constants import (
+from mnemosyne.core.constants import (
     CONSOLIDATION_IMPORTANCE_THRESHOLD,
-    MEMORY_CONTENT_TRUNCATE_LENGTH,
     MEMORY_SUMMARY_LENGTH,
 )
+from psyche.config.constants import MEMORY_CONTENT_TRUNCATE_LENGTH
 
 if TYPE_CHECKING:
     from psyche.core.server import PsycheCore

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from shared.constants import AUTO_STORAGE_THRESHOLD
+from psyche.config.constants import AUTO_STORAGE_THRESHOLD
 
 
 @dataclass

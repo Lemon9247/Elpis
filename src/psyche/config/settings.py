@@ -12,11 +12,11 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from shared.constants import (
-    AUTO_STORAGE_THRESHOLD,
+from mnemosyne.core.constants import (
     CONSOLIDATION_IMPORTANCE_THRESHOLD,
     CONSOLIDATION_SIMILARITY_THRESHOLD,
 )
+from psyche.config.constants import AUTO_STORAGE_THRESHOLD
 
 
 class ContextSettings(BaseSettings):

@@ -23,15 +23,12 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, List, Opti
 
 from loguru import logger
 
+from mnemosyne.core.constants import MEMORY_SUMMARY_LENGTH
+from psyche.config.constants import AUTO_STORAGE_THRESHOLD, MEMORY_CONTENT_TRUNCATE_LENGTH
 from psyche.core.context_manager import ContextConfig, ContextManager
 from psyche.core.memory_handler import MemoryHandler, MemoryHandlerConfig
 from psyche.memory.importance import calculate_importance, format_score_breakdown
 from psyche.memory.reasoning import parse_reasoning
-from shared.constants import (
-    AUTO_STORAGE_THRESHOLD,
-    MEMORY_CONTENT_TRUNCATE_LENGTH,
-    MEMORY_SUMMARY_LENGTH,
-)
 
 if TYPE_CHECKING:
     from psyche.mcp.client import ElpisClient, MnemosyneClient
