@@ -11,12 +11,10 @@ Base Interface
 --------------
 
 .. automodule:: elpis.llm.base
-   :synopsis: Abstract base class for inference engines
-
-.. autoclass:: elpis.llm.base.InferenceEngine
    :members:
    :undoc-members:
    :show-inheritance:
+   :synopsis: Abstract base class for inference engines
 
 The ``InferenceEngine`` abstract base class defines the interface that all
 inference backends must implement:
@@ -74,6 +72,7 @@ Backend Registry
 ----------------
 
 .. automodule:: elpis.llm.backends
+   :noindex:
    :synopsis: Backend registry and factory
 
 .. autofunction:: elpis.llm.backends.create_backend
@@ -108,6 +107,7 @@ llama-cpp Backend
 -----------------
 
 .. automodule:: elpis.llm.backends.llama_cpp
+   :noindex:
    :synopsis: llama-cpp-python inference backend
 
 .. autoclass:: elpis.llm.backends.llama_cpp.inference.LlamaInference
@@ -153,6 +153,7 @@ Transformers Backend
 --------------------
 
 .. automodule:: elpis.llm.backends.transformers
+   :noindex:
    :synopsis: HuggingFace Transformers inference backend
 
 .. autoclass:: elpis.llm.backends.transformers.inference.TransformersInference
@@ -202,6 +203,7 @@ Steering Manager
 ----------------
 
 .. automodule:: elpis.llm.backends.transformers.steering
+   :noindex:
    :synopsis: Steering vector management
 
 .. autoclass:: elpis.llm.backends.transformers.steering.SteeringManager

@@ -128,6 +128,7 @@ Data Classes
 ^^^^^^^^^^^^
 
 .. py:class:: EmotionalState
+   :noindex:
 
    Representation of the inference server's emotional state.
 
