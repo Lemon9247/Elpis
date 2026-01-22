@@ -235,14 +235,14 @@ Elpis supports two inference backends:
 
 To use steering vectors, switch to the transformers backend:
 
-```yaml
-model:
-  backend: transformers
-  path: meta-llama/Llama-3.1-8B-Instruct  # HuggingFace model ID
-  torch_dtype: bfloat16  # auto, float16, bfloat16, float32
-  steering_layer: 15  # Layer for applying steering vectors
-  emotion_vectors_dir: ./data/emotion_vectors  # Path to trained .pt files
-  context_length: 8192
+```toml
+[model]
+backend = "transformers"
+path = "meta-llama/Llama-3.1-8B-Instruct"  # HuggingFace model ID
+torch_dtype = "bfloat16"  # auto, float16, bfloat16, float32
+steering_layer = 15  # Layer for applying steering vectors
+emotion_vectors_dir = "./data/emotion_vectors"  # Path to trained .pt files
+context_length = 8192
 ```
 
 Or via environment variables:
@@ -257,13 +257,13 @@ export ELPIS_MODEL__EMOTION_VECTORS_DIR=./data/emotion_vectors
 
 Adjust emotional regulation parameters:
 
-```yaml
-emotion:
-  steering_strength: 1.0  # Global multiplier (0.0 to 3.0)
-  baseline_valence: 0.0   # Personality baseline
-  baseline_arousal: 0.0
-  decay_rate: 0.1        # Return to baseline rate
-  max_delta: 0.5         # Maximum single-event shift
+```toml
+[emotion]
+steering_strength = 1.0  # Global multiplier (0.0 to 3.0)
+baseline_valence = 0.0   # Personality baseline
+baseline_arousal = 0.0
+decay_rate = 0.1         # Return to baseline rate
+max_delta = 0.5          # Maximum single-event shift
 ```
 
 ### Tuning

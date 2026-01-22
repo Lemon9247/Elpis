@@ -2,20 +2,23 @@
 Tools
 =====
 
-Psyche includes a comprehensive tool system that allows the AI to interact with
-the file system, execute commands, and search codebases. The tool engine provides
-async execution, input validation, and safety controls.
+Elpis includes a comprehensive tool system that allows the AI to interact with
+the file system, execute commands, and search codebases. Tools execute locally
+on the client (Hermes) while memory tools execute server-side (Psyche).
+
+The tool engine (``hermes.tools``) provides async execution, input validation,
+and safety controls.
 
 Tool System Overview
 --------------------
 
 The tool system is built around three key components:
 
-:class:`~psyche.tools.tool_engine.ToolEngine`
+:class:`~hermes.tools.tool_engine.ToolEngine`
     Async tool execution orchestrator that manages tool registration, validation,
     and execution.
 
-:class:`~psyche.tools.tool_definitions.ToolDefinition`
+:class:`~hermes.tools.tool_definitions.ToolDefinition`
     Schema definition for tools including name, description, parameters, input
     model, and handler function.
 
@@ -377,7 +380,7 @@ Idle tool use is rate-limited to prevent excessive filesystem access:
 Tool Configuration
 ------------------
 
-Tool behavior can be configured through :class:`~psyche.tools.tool_engine.ToolSettings`:
+Tool behavior can be configured through :class:`~hermes.tools.tool_engine.ToolSettings`:
 
 .. code-block:: python
 
@@ -387,7 +390,7 @@ Tool behavior can be configured through :class:`~psyche.tools.tool_engine.ToolSe
         max_file_size: int = 1_000_000      # Maximum file size to read
         allowed_extensions: Optional[List[str]] = None  # File extension filter
 
-And through :class:`~psyche.memory.server.ServerConfig`:
+And through :class:`~psyche.server.daemon.ServerConfig`:
 
 .. code-block:: python
 

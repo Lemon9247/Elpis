@@ -10,16 +10,16 @@ visualization.
 Overview
 --------
 
-Hermes serves as the user-facing interface in the Elpis ecosystem, supporting
-two operational modes:
+Hermes connects to a running Psyche server via HTTP and provides the user-facing
+interface in the Elpis ecosystem. It handles:
 
-**Local Mode** (default)
-    Hermes spawns Elpis and Mnemosyne as MCP subprocesses, managing everything
-    in a single terminal session. All tools execute locally.
+- Terminal-based chat with streaming responses
+- Local execution of file, bash, and search tools
+- Emotional state display from the server
+- Tool activity visualization
 
-**Remote Mode** (``--server``)
-    Hermes connects to a running Psyche server via HTTP. File/bash/search tools
-    execute locally while memory tools execute server-side.
+Memory operations (recall, store, consolidate) execute server-side as part of
+Psyche's "self", while filesystem and command tools run locally on the client.
 
 Features
 --------
@@ -47,25 +47,27 @@ Slash Commands
 Quick Start
 -----------
 
-**Local Mode:**
+1. Start the Psyche server:
 
 .. code-block:: bash
 
-   # Start Hermes (spawns servers automatically)
+   psyche-server
+
+2. Connect with Hermes:
+
+.. code-block:: bash
+
    hermes
+
+By default, Hermes connects to ``http://127.0.0.1:8741``. To connect to a
+different server:
+
+.. code-block:: bash
+
+   hermes --server http://myserver:8741
 
    # With debug logging
    hermes --debug
-
-**Remote Mode:**
-
-.. code-block:: bash
-
-   # First, start the Psyche server
-   psyche-server
-
-   # Then connect with Hermes
-   hermes --server http://localhost:8741
 
 Keyboard Shortcuts
 ------------------
@@ -107,10 +109,10 @@ Slash Commands
    * - ``/quit``
      - Exit Hermes
 
-Architecture
-------------
+Components
+----------
 
-Hermes is organized into these components:
+Hermes is organized into these modules:
 
 **App** (``hermes.app``)
     The main Textual application managing the UI layout and user interaction.
@@ -128,55 +130,48 @@ Hermes is organized into these components:
     Slash command handling and help text formatting.
 
 **CLI** (``hermes.cli``)
-    Command-line entry point with argument parsing for local/remote modes.
+    Command-line entry point with argument parsing.
 
-Local vs Remote Mode
---------------------
+**Tools** (``hermes.tools``)
+    Local tool execution engine for file, bash, and search operations.
 
-**Local Mode:**
+Architecture
+------------
 
-.. code-block:: text
-
-   Hermes
-     ├── PsycheCore (instantiated directly)
-     │     ├── ReactHandler
-     │     ├── IdleHandler
-     │     ├── ElpisClient → elpis-server (subprocess)
-     │     └── MnemosyneClient → mnemosyne-server (subprocess)
-     └── ToolEngine (all tools execute locally)
-
-**Remote Mode:**
+Hermes connects to a Psyche server and executes tools locally:
 
 .. code-block:: text
 
-   Hermes
+   Hermes (TUI Client)
      ├── RemotePsycheClient → Psyche Server (HTTP)
-     └── ToolEngine (file/bash/search tools only)
+     └── ToolEngine (file/bash/search tools)
 
    Psyche Server (separate process)
      ├── PsycheCore
-     │     ├── ElpisClient
-     │     └── MnemosyneClient
+     │     ├── ElpisClient (inference)
+     │     └── MnemosyneClient (memory)
      └── Memory tools execute here
 
-In remote mode, Hermes receives tool_calls from the server, executes file/bash/search
-tools locally, and sends results back. Memory tools (``recall_memory``, ``store_memory``)
-execute server-side because memory is part of Psyche's "self".
+Hermes receives tool calls from the server, executes file/bash/search tools locally,
+and sends results back. Memory tools (``recall_memory``, ``store_memory``,
+``consolidate_memories``) execute server-side because memory is part of Psyche's
+"self".
 
 Configuration
 -------------
 
-Hermes inherits most configuration from the servers it connects to. Command-line
-options include:
+Hermes inherits most configuration from the Psyche server it connects to.
+Command-line options:
 
-.. code-block:: bash
+.. code-block:: text
 
    hermes --help
 
    Options:
-     --server URL        Connect to Psyche server instead of local mode
+     --server URL        Psyche server URL (default: http://127.0.0.1:8741)
+     --workspace PATH    Working directory for tool operations (default: .)
      --debug             Enable debug logging
-     --workspace PATH    Set workspace directory for tools
+     --log-file PATH     Path to log file
      --help              Show help message
 
 .. toctree::

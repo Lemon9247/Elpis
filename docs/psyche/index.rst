@@ -3,8 +3,8 @@ Psyche
 ======
 
 Psyche is the core library and HTTP server for the Elpis system. It coordinates
-memory handling, context management, tool execution, and provides both local
-and remote operation modes.
+memory handling, context management, and tool execution, providing an
+OpenAI-compatible API for remote access.
 
 Overview
 --------
@@ -22,8 +22,8 @@ Psyche serves as the "mind" of the Elpis ecosystem, providing:
 
 - **HTTP Server**: OpenAI-compatible API for remote access via ``psyche-server``
 
-- **Tool System**: File operations, bash execution, and codebase search with
-  safety controls and approval workflows.
+- **Memory Tools**: Server-side recall, storage, and consolidation operations.
+  File/bash/search tools execute on the client (Hermes).
 
 Architecture
 ------------
@@ -43,19 +43,19 @@ Psyche is organized into these key components:
     - ``ReactHandler``: ReAct loop for user input processing
     - ``IdleHandler``: Background processing during client silence
     - ``DreamHandler``: Server-side dreaming when no clients connected
-    - ``PsycheClient``: Abstract client interface (local and remote implementations)
+    - ``RemotePsycheClient``: HTTP client for connecting to Psyche server
 
 **Server** (``psyche.server``)
-    HTTP server infrastructure for remote operation:
+    HTTP server infrastructure:
 
     - ``PsycheDaemon``: Server lifecycle and MCP client management
     - ``PsycheHTTPServer``: FastAPI server with OpenAI-compatible API
 
-**Tools** (``psyche.tools``)
-    Async tool execution with safety controls:
+**Memory** (``psyche.memory``)
+    Memory integration components:
 
-    - ``ToolEngine``: Orchestrates tool execution with approval workflow
-    - Implementations: file ops, bash, directory listing, codebase search
+    - ``MemoryHandler``: Long-term storage, retrieval, and compaction
+    - ``tool_schemas``: Memory tool definitions for server-side execution
 
 **MCP Clients** (``psyche.mcp``)
     Clients for connecting to backend MCP servers:
@@ -63,36 +63,24 @@ Psyche is organized into these key components:
     - ``ElpisClient``: Text generation with streaming and emotional modulation
     - ``MnemosyneClient``: Memory storage, search, and consolidation
 
-Local vs Remote Mode
---------------------
+Server Architecture
+-------------------
 
-**Local Mode** (via Hermes):
-
-.. code-block:: text
-
-    Hermes
-      └── PsycheCore
-            ├── ReactHandler (processes user input)
-            ├── IdleHandler (background processing)
-            ├── ElpisClient (MCP subprocess)
-            └── MnemosyneClient (MCP subprocess)
-
-In local mode, Hermes instantiates PsycheCore directly and manages the full
-lifecycle including MCP server subprocesses.
-
-**Server Mode** (via psyche-server):
+Psyche runs as a persistent server via ``psyche-server``:
 
 .. code-block:: text
 
     PsycheDaemon
       ├── PsycheCore
-      │     ├── ElpisClient (MCP subprocess)
-      │     └── MnemosyneClient (MCP subprocess)
+      │     ├── ElpisClient (MCP subprocess for inference)
+      │     └── MnemosyneClient (MCP subprocess for memory)
       ├── PsycheHTTPServer (/v1/chat/completions)
       └── DreamHandler (when no clients)
 
-In server mode, PsycheDaemon manages the HTTP server and dreams when idle.
-Memory tools execute server-side; file/bash tools return to the client.
+The server manages MCP subprocesses for inference and memory, provides an
+OpenAI-compatible HTTP API, and dreams when idle. Memory tools execute
+server-side while file/bash/search tools are returned to clients for local
+execution.
 
 Key Features
 ------------
@@ -121,8 +109,8 @@ Dreaming
     - Potentially stores insights as new memories
     - Runs on a configurable interval (default: 5 minutes)
 
-Tool Safety
-    The tool system provides:
+Tool Safety (via Hermes)
+    The client-side tool system (``hermes.tools``) provides:
 
     - Pydantic validation for all tool inputs
     - Path sanitization to prevent workspace escapes
@@ -132,7 +120,7 @@ Tool Safety
 Quick Start
 -----------
 
-**Server Mode:**
+Start the Psyche server:
 
 .. code-block:: bash
 
@@ -144,6 +132,8 @@ Quick Start
 
    # With debug logging
    psyche-server --debug
+
+Then connect with Hermes (see :doc:`../hermes/index`).
 
 **Programmatic Usage:**
 

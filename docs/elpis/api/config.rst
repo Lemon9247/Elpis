@@ -40,7 +40,6 @@ The root ``Settings`` class aggregates all configuration sections:
     # Access sections
     settings.model      # ModelSettings
     settings.emotion    # EmotionSettings
-    settings.tools      # ToolSettings
     settings.logging    # LoggingSettings
 
 Model Settings
@@ -100,25 +99,6 @@ Example:
     export ELPIS_EMOTION_BASELINE_VALENCE=0.2
     export ELPIS_EMOTION_BASELINE_AROUSAL=-0.1
     export ELPIS_EMOTION_DECAY_RATE=0.05
-
-Tool Settings
--------------
-
-.. autoclass:: elpis.config.settings.ToolSettings
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Configuration for tool execution behavior.
-
-**Environment prefix**: ``ELPIS_TOOLS_``
-
-Example:
-
-.. code-block:: bash
-
-    export ELPIS_TOOLS_WORKSPACE_DIR=/home/user/workspace
-    export ELPIS_TOOLS_MAX_BASH_TIMEOUT=60
 
 Logging Settings
 ----------------
@@ -203,14 +183,6 @@ Environment Variable Reference
      - Max event delta
    * - ``ELPIS_EMOTION_STEERING_STRENGTH``
      - Global steering multiplier
-   * - ``ELPIS_TOOLS_WORKSPACE_DIR``
-     - Workspace directory
-   * - ``ELPIS_TOOLS_MAX_BASH_TIMEOUT``
-     - Bash timeout seconds
-   * - ``ELPIS_TOOLS_MAX_FILE_SIZE``
-     - Max file size bytes
-   * - ``ELPIS_TOOLS_ENABLE_DANGEROUS_COMMANDS``
-     - Allow dangerous commands
    * - ``ELPIS_LOGGING_LEVEL``
      - Log level
    * - ``ELPIS_LOGGING_OUTPUT_FILE``

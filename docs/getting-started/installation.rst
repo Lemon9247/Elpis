@@ -149,7 +149,7 @@ Verify the installation by checking that the CLI commands are available:
 
    elpis-server --help
    mnemosyne-server --help
-   psyche --help
+   psyche-server --help
 
 Run the test suite to ensure everything is working:
 

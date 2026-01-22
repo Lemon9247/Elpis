@@ -85,31 +85,6 @@ These settings control the emotional regulation system.
      - ``1.0``
      - Global steering strength multiplier
 
-Tool Settings
-^^^^^^^^^^^^^
-
-These settings control tool execution behavior.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 35 15 50
-
-   * - Variable
-     - Default
-     - Description
-   * - ``ELPIS_TOOLS_WORKSPACE_DIR``
-     - ``./workspace``
-     - Directory for tool operations
-   * - ``ELPIS_TOOLS_MAX_BASH_TIMEOUT``
-     - ``30``
-     - Max bash command timeout (seconds)
-   * - ``ELPIS_TOOLS_MAX_FILE_SIZE``
-     - ``10485760``
-     - Max file size in bytes (10MB)
-   * - ``ELPIS_TOOLS_ENABLE_DANGEROUS_COMMANDS``
-     - ``False``
-     - Allow dangerous shell commands
-
 Logging Settings
 ^^^^^^^^^^^^^^^^
 
@@ -147,14 +122,17 @@ Elpis configuration is structured as nested Pydantic settings classes:
     # Access nested settings
     print(settings.model.backend)      # "llama-cpp"
     print(settings.emotion.decay_rate)  # 0.1
-    print(settings.tools.workspace_dir) # "./workspace"
 
 The main :class:`~elpis.config.settings.Settings` class contains:
 
 - :class:`~elpis.config.settings.ModelSettings` - LLM configuration
 - :class:`~elpis.config.settings.EmotionSettings` - Emotional regulation
-- :class:`~elpis.config.settings.ToolSettings` - Tool execution
 - :class:`~elpis.config.settings.LoggingSettings` - Logging configuration
+
+.. note::
+
+   Tool settings are configured in Hermes (the TUI client) rather than Elpis.
+   See :doc:`/hermes/api/tools` for tool configuration options.
 
 Example Configurations
 ----------------------

@@ -3,32 +3,11 @@ Quickstart
 
 This guide will get you using Elpis in just a few minutes.
 
-Local Mode (Recommended)
-------------------------
+Getting Started
+---------------
 
-The easiest way to use Elpis is with Hermes in local mode. Hermes spawns
-all servers automatically:
-
-.. code-block:: bash
-
-   hermes
-
-That's it! Hermes will:
-
-1. Start ``elpis-server`` (inference) as a subprocess
-2. Start ``mnemosyne-server`` (memory) as a subprocess
-3. Connect to both via MCP stdio transport
-4. Provide an interactive terminal interface
-
-.. note::
-
-   When using Hermes in local mode, you do NOT need to start any servers
-   manually. Hermes manages them automatically.
-
-Server Mode (Remote Access)
----------------------------
-
-For remote access or persistent server operation, run Psyche as a server:
+Elpis uses a server architecture: Psyche runs as a persistent server managing
+inference and memory, while Hermes provides the terminal interface.
 
 .. code-block:: bash
 
@@ -36,12 +15,12 @@ For remote access or persistent server operation, run Psyche as a server:
    psyche-server
 
    # Terminal 2: Connect with Hermes
-   hermes --server http://localhost:8741
+   hermes
 
-In server mode:
+By default, Hermes connects to ``http://127.0.0.1:8741``. The architecture:
 
-- Psyche manages memory and executes memory tools server-side
-- Hermes executes file/bash/search tools locally
+- **Psyche** manages memory and executes memory tools server-side
+- **Hermes** executes file/bash/search tools locally
 - Server dreams when no clients are connected
 - Multiple clients can connect (memories are shared)
 
@@ -128,21 +107,21 @@ Configuration
 Configuration File
 ^^^^^^^^^^^^^^^^^^
 
-Create a ``config.yaml`` file:
+Create a ``configs/elpis.toml`` file:
 
-.. code-block:: yaml
+.. code-block:: toml
 
-   model:
-     backend: llama-cpp
-     path: ./data/models/model.gguf
-     context_length: 8192
-     gpu_layers: 35
+   [model]
+   backend = "llama-cpp"
+   path = "./data/models/model.gguf"
+   context_length = 8192
+   gpu_layers = 35
 
-   emotion:
-     baseline_valence: 0.0
-     baseline_arousal: 0.0
-     decay_rate: 0.1
-     steering_strength: 1.0
+   [emotion]
+   baseline_valence = 0.0
+   baseline_arousal = 0.0
+   decay_rate = 0.1
+   steering_strength = 1.0
 
 Environment Variables
 ^^^^^^^^^^^^^^^^^^^^^
@@ -155,8 +134,11 @@ Use environment variables with nested ``__`` delimiter:
    export ELPIS_MODEL__PATH=./data/models/model.gguf
    export ELPIS_MODEL__CONTEXT_LENGTH=16384
 
-   # Or use a .env file
-   MODEL__CONTEXT_LENGTH=16384
+   # Mnemosyne settings
+   export MNEMOSYNE_STORAGE__PATH=./data/memory
+
+   # Psyche settings
+   export PSYCHE_SERVER__PORT=8741
 
 Running Individual Servers
 --------------------------

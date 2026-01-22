@@ -297,7 +297,7 @@ Psyche automatically triggers consolidation during idle periods:
 
 .. code-block:: python
 
-   # In MemoryServer._maybe_consolidate_memories()
+   # Psyche triggers consolidation during idle periods
    async def _maybe_consolidate_memories(self) -> None:
        if not self.config.enable_consolidation:
            return
