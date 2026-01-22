@@ -314,4 +314,4 @@ See Also
 
 - :doc:`architecture` - How memories flow through the system
 - :doc:`api/models` - Full API reference for Memory and related classes
-- :doc:`/elpis/emotional-states` - Emotional state model in Elpis
+- :doc:`/elpis/emotion-system` - Emotional state model in Elpis

@@ -141,6 +141,7 @@ Event Mappings
 
 .. autodata:: elpis.emotion.regulation.EVENT_MAPPINGS
    :no-value:
+   :noindex:
 
 The module defines standard event mappings as a dictionary:
 

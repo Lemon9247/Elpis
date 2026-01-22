@@ -120,11 +120,14 @@ Exceptions
 .. autoexception:: hermes.tools.tool_engine.ToolExecutionError
    :members:
    :show-inheritance:
+   :noindex:
 
 .. autoexception:: hermes.tools.implementations.file_tools.PathSafetyError
    :members:
    :show-inheritance:
+   :noindex:
 
 .. autoexception:: hermes.tools.implementations.bash_tool.CommandSafetyError
    :members:
    :show-inheritance:
+   :noindex:

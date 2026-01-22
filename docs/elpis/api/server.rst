@@ -21,6 +21,7 @@ Server Context
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: llm, emotion_state, regulator, settings, active_streams
 
 The ``ServerContext`` dataclass holds all initialized server components:
 

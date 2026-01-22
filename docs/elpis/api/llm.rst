@@ -114,6 +114,7 @@ llama-cpp Backend
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: SUPPORTS_STEERING, MODULATION_TYPE
 
 The llama-cpp backend provides fast inference for GGUF quantized models:
 
@@ -160,6 +161,7 @@ Transformers Backend
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: SUPPORTS_STEERING, MODULATION_TYPE
 
 The transformers backend provides full HuggingFace model support with
 steering vector injection:

@@ -134,54 +134,65 @@ Data Classes
 
    .. py:attribute:: valence
       :type: float
+      :noindex:
 
       Emotional valence from -1 (negative) to 1 (positive).
 
    .. py:attribute:: arousal
       :type: float
+      :noindex:
 
       Emotional arousal from 0 (low) to 1 (high).
 
    .. py:attribute:: quadrant
       :type: str
+      :noindex:
 
       Quadrant classification: "excited", "calm", "frustrated", or "depleted".
 
    .. py:attribute:: update_count
       :type: int
+      :noindex:
 
       Number of emotional updates since last reset.
 
 .. py:class:: GenerationResult
+   :noindex:
 
    Result from a generation request.
 
    .. py:attribute:: content
       :type: str
+      :noindex:
 
       Generated text content.
 
    .. py:attribute:: emotional_state
       :type: EmotionalState
+      :noindex:
 
       Emotional state at time of generation.
 
    .. py:attribute:: modulated_params
       :type: Dict[str, float]
+      :noindex:
 
       Parameters that were modulated by emotional state.
 
 .. py:class:: FunctionCallResult
+   :noindex:
 
    Result from a function call request.
 
    .. py:attribute:: tool_calls
       :type: List[Dict[str, Any]]
+      :noindex:
 
       List of tool calls in OpenAI format.
 
    .. py:attribute:: emotional_state
       :type: EmotionalState
+      :noindex:
 
       Emotional state at time of generation.
 

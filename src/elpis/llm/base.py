@@ -55,13 +55,8 @@ class InferenceEngine(ABC):
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
             top_p: Top-p sampling parameter
-            emotion_coefficients: Optional steering vector blend weights
-                {
-                    "excited": float,     # high valence, high arousal
-                    "frustrated": float,  # low valence, high arousal
-                    "calm": float,        # high valence, low arousal
-                    "depleted": float     # low valence, low arousal
-                }
+            emotion_coefficients: Optional steering vector blend weights mapping
+                emotion names (excited, frustrated, calm, depleted) to floats
 
         Returns:
             Generated response text

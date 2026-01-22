@@ -47,7 +47,7 @@ class SearchTool:
 
         Args:
             pattern: Regex pattern to search for
-            file_glob: Optional file glob pattern (e.g., '*.py', '**/*.js')
+            file_glob: Optional file glob pattern (e.g., ``*.py``, ``**/*.js``)
             context_lines: Number of context lines to show around matches
 
         Returns:

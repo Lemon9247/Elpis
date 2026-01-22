@@ -7,7 +7,6 @@ from loguru import logger
 from elpis.emotion.state import EmotionalState
 
 
-# Event type -> (valence_delta, arousal_delta)
 EVENT_MAPPINGS: Dict[str, Tuple[float, float]] = {
     # Success events (positive valence, variable arousal)
     "success": (0.2, 0.1),  # Task completed
@@ -36,6 +35,7 @@ EVENT_MAPPINGS: Dict[str, Tuple[float, float]] = {
     "user_negative": (-0.1, 0.15),  # User gives negative feedback
     "user_question": (0.05, 0.1),  # User asks question
 }
+"""Maps event types to (valence_delta, arousal_delta) tuples."""
 
 
 class HomeostasisRegulator:

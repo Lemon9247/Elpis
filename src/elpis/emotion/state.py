@@ -139,13 +139,12 @@ class EmotionalState:
         to blend.
 
         Returns:
-            Dictionary mapping emotion names to blend weights (0.0 to 1.0)
-                {
-                    "excited": float,     # high valence, high arousal
-                    "frustrated": float,  # low valence, high arousal
-                    "calm": float,        # high valence, low arousal
-                    "depleted": float     # low valence, low arousal
-                }
+            Dictionary mapping emotion names to blend weights (0.0 to 1.0):
+
+            - "excited": high valence, high arousal
+            - "frustrated": low valence, high arousal
+            - "calm": high valence, low arousal
+            - "depleted": low valence, low arousal
         """
         # Normalize valence/arousal from [-1, 1] to [0, 1]
         v = (self.valence + 1.0) / 2.0  # 0 = negative, 1 = positive
