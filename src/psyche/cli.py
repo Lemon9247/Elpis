@@ -138,7 +138,7 @@ def main(
     setup_logging(debug, log_file if not debug else None)
 
     # Apply MCP patch before imports
-    from psyche.mcp_patch import apply_mcp_patch
+    from shared.mcp_patch import apply_mcp_patch
     apply_mcp_patch()
 
     # Import after patch

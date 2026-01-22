@@ -11,12 +11,10 @@ Emotional State
 ---------------
 
 .. automodule:: elpis.emotion.state
-   :synopsis: Valence-arousal emotional state model
-
-.. autoclass:: elpis.emotion.state.EmotionalState
    :members:
    :undoc-members:
    :show-inheritance:
+   :synopsis: Valence-arousal emotional state model
 
 The ``EmotionalState`` class represents a point in 2D emotional space:
 
@@ -108,12 +106,10 @@ Homeostasis Regulator
 ---------------------
 
 .. automodule:: elpis.emotion.regulation
-   :synopsis: Homeostatic regulation for emotional state
-
-.. autoclass:: elpis.emotion.regulation.HomeostasisRegulator
    :members:
    :undoc-members:
    :show-inheritance:
+   :synopsis: Homeostatic regulation for emotional state
 
 The ``HomeostasisRegulator`` processes emotional events and manages
 decay toward baseline:

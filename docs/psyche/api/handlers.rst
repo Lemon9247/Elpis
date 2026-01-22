@@ -2,48 +2,22 @@
 Handlers Module
 ===============
 
-The handlers module provides specialized components for different operational modes.
-
-psyche.handlers.react_handler
------------------------------
-
-ReactHandler
-^^^^^^^^^^^^
-
-.. automodule:: psyche.handlers.react_handler
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-psyche.handlers.idle_handler
-----------------------------
-
-IdleHandler
-^^^^^^^^^^^
-
-.. automodule:: psyche.handlers.idle_handler
-   :members:
-   :undoc-members:
-   :show-inheritance:
+The handlers module provides server-side behavioral components.
 
 psyche.handlers.dream_handler
 -----------------------------
 
-DreamHandler
-^^^^^^^^^^^^
+DreamHandler provides memory-based introspection when no clients are connected
+to the Psyche server.
 
 .. automodule:: psyche.handlers.dream_handler
    :members:
    :undoc-members:
    :show-inheritance:
 
-psyche.handlers.psyche_client
------------------------------
+Client Connection
+-----------------
 
-PsycheClient
-^^^^^^^^^^^^
-
-.. automodule:: psyche.handlers.psyche_client
-   :members:
-   :undoc-members:
-   :show-inheritance:
+Client-side connection to Psyche is handled by ``RemotePsycheClient`` in the
+Hermes package (``hermes.handlers``). Psyche operates as a stateless
+memory-enriched inference API.

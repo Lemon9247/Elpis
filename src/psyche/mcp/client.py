@@ -10,6 +10,11 @@ from loguru import logger
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from mnemosyne.core.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+)
+
 
 @dataclass
 class EmotionalState:
@@ -517,8 +522,8 @@ class MnemosyneClient:
 
     async def consolidate_memories(
         self,
-        importance_threshold: float = 0.6,
-        similarity_threshold: float = 0.85,
+        importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD,
+        similarity_threshold: float = CONSOLIDATION_SIMILARITY_THRESHOLD,
     ) -> ConsolidationResult:
         """
         Run memory consolidation cycle.

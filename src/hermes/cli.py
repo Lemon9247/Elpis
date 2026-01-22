@@ -39,15 +39,14 @@ _setup_logging_early()
 
 # Apply MCP library patch BEFORE any MCP imports
 # Fixes: RuntimeError: dictionary keys changed during iteration
-from psyche.mcp_patch import apply_mcp_patch
+from shared.mcp_patch import apply_mcp_patch
 
 apply_mcp_patch()
 
 # Now safe to import modules that may use logging
 from hermes.app import Hermes
 from hermes.handlers import RemotePsycheClient
-from psyche.tools import ToolEngine
-from psyche.tools.tool_engine import ToolSettings
+from hermes.tools import ToolEngine, ToolSettings
 
 
 def setup_logging(debug: bool = False, log_file: str | None = None) -> None:

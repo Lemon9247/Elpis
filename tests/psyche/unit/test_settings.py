@@ -9,6 +9,11 @@ from unittest.mock import patch
 
 import pytest
 
+from mnemosyne.core.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+)
+from psyche.config.constants import AUTO_STORAGE_THRESHOLD
 from psyche.config.settings import (
     ConsolidationSettings,
     ContextSettings,
@@ -17,11 +22,6 @@ from psyche.config.settings import (
     ServerSettings,
     Settings,
     ToolSettings,
-)
-from psyche.shared.constants import (
-    AUTO_STORAGE_THRESHOLD,
-    CONSOLIDATION_IMPORTANCE_THRESHOLD,
-    CONSOLIDATION_SIMILARITY_THRESHOLD,
 )
 
 
@@ -66,7 +66,7 @@ class TestMemorySettings:
     """Test MemorySettings configuration."""
 
     def test_defaults(self):
-        """Test default values match shared constants."""
+        """Test default values match constants."""
         settings = MemorySettings()
         assert settings.enable_auto_retrieval is True
         assert settings.auto_retrieval_count == 3
@@ -87,7 +87,7 @@ class TestConsolidationSettings:
     """Test ConsolidationSettings configuration."""
 
     def test_defaults(self):
-        """Test default values match shared constants."""
+        """Test default values match constants."""
         settings = ConsolidationSettings()
         assert settings.enabled is True
         assert settings.importance_threshold == CONSOLIDATION_IMPORTANCE_THRESHOLD

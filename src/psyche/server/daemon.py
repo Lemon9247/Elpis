@@ -18,6 +18,10 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional, Set
 import uvicorn
 from loguru import logger
 
+from mnemosyne.core.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+)
 from psyche.core import CoreConfig, ContextConfig, MemoryHandlerConfig, PsycheCore
 from psyche.mcp.client import ElpisClient, MnemosyneClient
 from psyche.server.http import HTTPServerConfig, PsycheHTTPServer
@@ -56,8 +60,8 @@ class ServerConfig:
     # Consolidation configuration
     consolidation_enabled: bool = True
     consolidation_interval: float = 300.0  # Check every 5 minutes
-    consolidation_importance_threshold: float = 0.6
-    consolidation_similarity_threshold: float = 0.85
+    consolidation_importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD
+    consolidation_similarity_threshold: float = CONSOLIDATION_SIMILARITY_THRESHOLD
 
 
 class PsycheDaemon:

@@ -42,8 +42,12 @@ from mnemosyne.core.models import (
     MemoryStatus,
     MemoryType,
 )
+from mnemosyne.core.constants import (
+    CONSOLIDATION_IMPORTANCE_THRESHOLD,
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+    MEMORY_SUMMARY_LENGTH,
+)
 from mnemosyne.storage.chroma_store import ChromaMemoryStore
-from psyche.shared.constants import MEMORY_SUMMARY_LENGTH
 
 if TYPE_CHECKING:
     from mnemosyne.config.settings import Settings
@@ -124,12 +128,12 @@ async def list_tools() -> List[Tool]:
                 "properties": {
                     "importance_threshold": {
                         "type": "number",
-                        "default": 0.6,
+                        "default": CONSOLIDATION_IMPORTANCE_THRESHOLD,
                         "description": "Minimum importance score for promotion (0-1)",
                     },
                     "similarity_threshold": {
                         "type": "number",
-                        "default": 0.85,
+                        "default": CONSOLIDATION_SIMILARITY_THRESHOLD,
                         "description": "Similarity threshold for clustering (0-1)",
                     },
                 },
@@ -304,8 +308,8 @@ async def _handle_get_stats() -> Dict[str, Any]:
 async def _handle_consolidate_memories(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle consolidate_memories tool call."""
     # Get defaults from settings if available
-    default_importance = 0.6
-    default_similarity = 0.85
+    default_importance = CONSOLIDATION_IMPORTANCE_THRESHOLD
+    default_similarity = CONSOLIDATION_SIMILARITY_THRESHOLD
     if _settings:
         default_importance = _settings.consolidation.importance_threshold
         default_similarity = _settings.consolidation.similarity_threshold

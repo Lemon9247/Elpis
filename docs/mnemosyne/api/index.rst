@@ -15,6 +15,7 @@ Modules
    server
    models
    storage
+   constants
 
 Quick Reference
 ---------------

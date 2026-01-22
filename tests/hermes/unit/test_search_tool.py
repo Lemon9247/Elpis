@@ -3,8 +3,8 @@ import pytest
 import shutil
 from pathlib import Path
 
-from psyche.tools.tool_engine import ToolSettings
-from psyche.tools.implementations.search_tool import SearchTool
+from hermes.tools.tool_engine import ToolSettings
+from hermes.tools.implementations.search_tool import SearchTool
 
 
 @pytest.fixture

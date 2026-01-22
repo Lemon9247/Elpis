@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from psyche.tools.tool_definitions import (
+from hermes.tools.tool_definitions import (
     CreateFileInput,
     EditFileInput,
     ExecuteBashInput,
@@ -18,10 +18,10 @@ from psyche.tools.tool_definitions import (
     SearchCodebaseInput,
     ToolDefinition,
 )
-from psyche.tools.implementations.bash_tool import BashTool
-from psyche.tools.implementations.directory_tool import DirectoryTool
-from psyche.tools.implementations.file_tools import FileTools
-from psyche.tools.implementations.search_tool import SearchTool
+from hermes.tools.implementations.bash_tool import BashTool
+from hermes.tools.implementations.directory_tool import DirectoryTool
+from hermes.tools.implementations.file_tools import FileTools
+from hermes.tools.implementations.search_tool import SearchTool
 
 
 class ToolExecutionError(Exception):

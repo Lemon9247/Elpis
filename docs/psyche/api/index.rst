@@ -11,5 +11,5 @@ This section provides detailed API documentation for all Psyche modules.
    core
    handlers
    server
-   tools
    mcp
+   constants

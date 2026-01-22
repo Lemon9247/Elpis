@@ -3,7 +3,7 @@ import pytest
 import json
 from pathlib import Path
 
-from psyche.tools.tool_engine import ToolEngine, ToolSettings
+from hermes.tools.tool_engine import ToolEngine, ToolSettings
 
 
 @pytest.fixture
@@ -374,7 +374,7 @@ class TestSanitizePath:
 
     def test_sanitize_path_outside_workspace_raises(self, tool_engine):
         """Test that paths outside workspace raise error."""
-        from psyche.tools.tool_engine import ToolExecutionError
+        from hermes.tools.tool_engine import ToolExecutionError
 
         with pytest.raises(ToolExecutionError):
             tool_engine.sanitize_path('/etc/passwd')

@@ -2,98 +2,39 @@
 Features
 ========
 
-Psyche provides a rich set of features for interactive AI conversations with
-emotional modulation and continuous inference capabilities.
+Psyche provides a rich set of features for AI conversations with persistent
+memory, emotional modulation, and background processing capabilities.
 
-TUI Interface
--------------
+HTTP API
+--------
 
-The primary interface is a Textual-based Terminal User Interface (TUI) that
-provides a modern, responsive terminal experience.
+Psyche exposes an OpenAI-compatible HTTP API for chat completions:
 
-Layout
-^^^^^^
+.. code-block:: bash
 
-The TUI is organized into several panels:
+    curl http://localhost:8741/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": true}'
 
-**Main Chat Area**
-    The central panel displays the conversation history with user messages,
-    assistant responses, and system notifications. Messages are rendered with
-    rich formatting and markdown support.
+The API handles:
 
-**Sidebar**
-    Contains status widgets:
+- Streaming token generation
+- Memory retrieval and storage
+- Emotional state tracking
+- Tool call coordination
 
-    - *Emotional State Display*: Visual bars showing valence and arousal with
-      quadrant classification
-    - *Status Display*: Server state, message count, and token usage
-    - *Tool Activity*: Recent tool executions with status indicators
+TUI Client (Hermes)
+-------------------
 
-**Thought Panel**
-    A collapsible panel showing internal AI thoughts and reflections.
-    Toggle visibility with ``Ctrl+T`` or ``/thoughts on|off``.
+The primary user interface is provided by Hermes, a separate TUI client that
+connects to the Psyche server. See :doc:`/hermes/index` for details.
 
-**Input Area**
-    Text input with placeholder text and command detection.
+Hermes provides:
 
-Streaming Responses
-^^^^^^^^^^^^^^^^^^^
-
-Psyche streams tokens in real-time as they are generated:
-
-.. code-block:: python
-
-    # Token streaming is handled automatically via callbacks
-    async for token in client.generate_stream(messages):
-        chat_view.append_token(token)
-
-This provides immediate visual feedback and a more responsive experience
-compared to waiting for complete responses.
-
-Widgets
-^^^^^^^
-
-The TUI is composed of several custom Textual widgets:
-
-:class:`~psyche.client.widgets.ChatView`
-    Scrollable chat history with streaming message support. Handles user messages,
-    assistant responses, and system notifications with rich formatting.
-
-:class:`~psyche.client.widgets.Sidebar`
-    Container for status widgets including emotional state, server status,
-    and tool activity displays.
-
-:class:`~psyche.client.widgets.ThoughtPanel`
-    Collapsible panel for internal thoughts with type-based color coding
-    (reflection, planning, idle, memory).
-
-:class:`~psyche.client.widgets.UserInput`
-    Input widget with slash command detection and placeholder text.
-
-:class:`~psyche.client.widgets.ToolActivity`
-    Displays active and recent tool executions with status indicators
-    (running, complete, error).
-
-REPL Mode
----------
-
-For simpler interactions, Psyche provides a REPL (Read-Eval-Print Loop)
-interface using prompt_toolkit:
-
-.. code-block:: python
-
-    from psyche.client.repl import PsycheREPL
-    from psyche.memory.server import MemoryServer
-
-    repl = PsycheREPL(server=memory_server)
-    await repl.run()
-
-Features include:
-
-- Command history with file persistence
-- Rich console output with markdown rendering
-- Thinking indicators during generation
-- The same slash commands as the TUI
+- Real-time streaming responses with markdown rendering
+- Emotional state display with quadrant visualization
+- Tool activity visualization
+- Internal thought panel
 
 Continuous Inference
 --------------------

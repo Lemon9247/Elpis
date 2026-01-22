@@ -36,7 +36,7 @@ from hermes.widgets import (
 from hermes.widgets.sidebar import StatusDisplay
 from hermes.commands import get_command, format_help_text, format_shortcut_help, format_startup_hint
 from hermes.handlers import PsycheClient, RemotePsycheClient
-from psyche.tools.tool_engine import ToolEngine
+from hermes.tools import ToolEngine
 
 
 class AppState(Enum):

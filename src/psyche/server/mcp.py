@@ -23,6 +23,8 @@ from loguru import logger
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from psyche.memory.tool_schemas import RECALL_MEMORY_SCHEMA, STORE_MEMORY_SCHEMA
+
 if TYPE_CHECKING:
     from psyche.core.server import PsycheCore
 
@@ -83,45 +85,12 @@ def create_mcp_server(core: PsycheCore) -> Server:
             Tool(
                 name="recall_memory",
                 description="Explicitly retrieve memories beyond auto-retrieval",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Search query for memories",
-                        },
-                        "n": {
-                            "type": "integer",
-                            "description": "Number of memories to retrieve (default: 5)",
-                            "default": 5,
-                        },
-                    },
-                    "required": ["query"],
-                },
+                inputSchema=RECALL_MEMORY_SCHEMA,
             ),
             Tool(
                 name="store_memory",
                 description="Explicitly store a memory",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "content": {
-                            "type": "string",
-                            "description": "Memory content to store",
-                        },
-                        "importance": {
-                            "type": "number",
-                            "description": "Importance score 0.0-1.0 (default: 0.5)",
-                            "default": 0.5,
-                        },
-                        "tags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional tags for categorization",
-                        },
-                    },
-                    "required": ["content"],
-                },
+                inputSchema=STORE_MEMORY_SCHEMA,
             ),
             Tool(
                 name="get_emotion",
