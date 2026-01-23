@@ -401,13 +401,13 @@ async def _handle_get_recent_memories(args: Dict[str, Any]) -> Dict[str, Any]:
 
     cutoff = datetime.now() - timedelta(hours=hours)
 
-    # Get all short-term memories (run in thread pool)
+    # Get short-term memories (run in thread pool)
+    # Note: Only searches short-term buffer. Long-term memories are not
+    # included as they lack efficient time-based retrieval. Consider
+    # Phase 7 improvements for unified time-based search.
     short_term_memories = await asyncio.to_thread(
         memory_store.get_all_short_term, limit * 2
     )
-
-    # Also search long-term for recent additions
-    # Note: We'll combine and filter both collections
     all_memories = short_term_memories
 
     # Filter by cutoff time and sort by created_at

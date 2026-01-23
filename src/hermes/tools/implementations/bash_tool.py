@@ -29,6 +29,13 @@ class BashTool:
         '> /dev/sda',
         'wget http',  # Could be downloading malware
         'curl http',  # Could be downloading malware
+        'sudo ',  # Privilege escalation
+        'chown -R',  # Recursive ownership change
+        'shutdown',
+        'reboot',
+        'poweroff',
+        'init 0',
+        'init 6',
     ]
 
     def __init__(self, workspace_dir: Path, settings: "ToolSettings"):

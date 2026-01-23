@@ -7,6 +7,7 @@ Tests cover:
 - Emotional state management
 - Resource reading
 - Integration with LLM inference
+- Stream management (TTL, limits)
 """
 
 import pytest
@@ -14,7 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from elpis.emotion.state import EmotionalState
 from elpis.emotion.regulation import HomeostasisRegulator
-from elpis.server import ServerContext
+from elpis.server import (
+    ServerContext,
+    StreamState,
+    MAX_ACTIVE_STREAMS,
+    STREAM_TTL_SECONDS,
+)
 import elpis.server as server_module
 
 
@@ -336,3 +342,99 @@ class TestErrorHandling:
         assert len(result) == 1
         assert "error" in result[0].text
         assert "Test error" in result[0].text
+
+
+class TestStreamManagement:
+    """Tests for stream TTL and limit management."""
+
+    def test_stream_state_has_created_at(self):
+        """StreamState should have a created_at timestamp."""
+        state = StreamState()
+        assert hasattr(state, "created_at")
+        assert state.created_at > 0
+
+    def test_stream_constants_are_defined(self):
+        """Stream management constants should be defined."""
+        assert MAX_ACTIVE_STREAMS == 100
+        assert STREAM_TTL_SECONDS == 600
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_stream_limit_enforced(self, initialized_server, mock_llm):
+        """Starting streams beyond limit should return error."""
+        # Create an async generator for streaming
+        async def mock_stream():
+            yield "token"
+
+        mock_llm.chat_completion_stream = MagicMock(return_value=mock_stream())
+
+        # Fill up the stream limit
+        for i in range(MAX_ACTIVE_STREAMS):
+            initialized_server.active_streams[f"test-stream-{i}"] = StreamState()
+
+        # Try to start another stream
+        result = await server_module.call_tool("generate_stream_start", {
+            "messages": [{"role": "user", "content": "Test"}]
+        })
+
+        assert len(result) == 1
+        assert "error" in result[0].text
+        assert "Maximum concurrent streams" in result[0].text
+
+        # Clean up
+        initialized_server.active_streams.clear()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_stale_streams_cleaned_up(self, initialized_server, mock_llm):
+        """Stale streams should be cleaned up when starting new stream."""
+        import time
+
+        # Create an async generator for streaming
+        async def mock_stream():
+            yield "token"
+
+        mock_llm.chat_completion_stream = MagicMock(return_value=mock_stream())
+
+        # Add a stale stream (created in the past)
+        stale_state = StreamState()
+        stale_state.created_at = time.monotonic() - STREAM_TTL_SECONDS - 100
+        initialized_server.active_streams["stale-stream"] = stale_state
+
+        # Start a new stream (should trigger cleanup)
+        result = await server_module.call_tool("generate_stream_start", {
+            "messages": [{"role": "user", "content": "Test"}]
+        })
+
+        # Stale stream should be removed
+        assert "stale-stream" not in initialized_server.active_streams
+        # New stream should be started
+        assert "stream_id" in result[0].text
+
+        # Clean up
+        initialized_server.active_streams.clear()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_cleanup_stale_streams_function(self, initialized_server):
+        """_cleanup_stale_streams should remove expired streams."""
+        import time
+
+        # Add mix of stale and fresh streams
+        stale_state = StreamState()
+        stale_state.created_at = time.monotonic() - STREAM_TTL_SECONDS - 100
+        initialized_server.active_streams["stale"] = stale_state
+
+        fresh_state = StreamState()
+        fresh_state.created_at = time.monotonic()
+        initialized_server.active_streams["fresh"] = fresh_state
+
+        # Run cleanup
+        removed = await server_module._cleanup_stale_streams(initialized_server)
+
+        assert removed == 1
+        assert "stale" not in initialized_server.active_streams
+        assert "fresh" in initialized_server.active_streams
+
+        # Clean up
+        initialized_server.active_streams.clear()

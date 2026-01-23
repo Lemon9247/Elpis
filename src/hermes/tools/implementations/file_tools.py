@@ -105,16 +105,16 @@ class FileTools:
                     'error': f"File too large: {file_size} bytes (max: {self.settings.max_file_size})"
                 }
 
-            # Read file
+            # Read file in single pass (count total lines while reading)
             with open(path, 'r', encoding='utf-8', errors='replace') as f:
                 lines = []
-                for i, line in enumerate(f):
-                    if i >= max_lines:
-                        break
-                    lines.append(line)
+                total_lines_in_file = 0
+                for line in f:
+                    total_lines_in_file += 1
+                    if len(lines) < max_lines:
+                        lines.append(line)
 
             content = ''.join(lines)
-            total_lines_in_file = sum(1 for _ in open(path, 'r', encoding='utf-8', errors='replace'))
             truncated = total_lines_in_file > max_lines
 
             return {

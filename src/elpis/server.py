@@ -25,10 +25,15 @@ import json
 import os
 import signal
 import sys
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Stream management limits
+MAX_ACTIVE_STREAMS = 100
+STREAM_TTL_SECONDS = 600  # 10 minutes
 
 from loguru import logger
 from mcp.server import Server
@@ -54,6 +59,7 @@ class StreamState:
     is_complete: bool = False
     error: Optional[str] = None
     task: Optional[asyncio.Task] = None  # Reference to producer task
+    created_at: float = field(default_factory=time.monotonic)  # For TTL enforcement
 
 
 @dataclass
@@ -95,6 +101,40 @@ def get_context() -> ServerContext:
     if _context is None:
         raise RuntimeError("Server not initialized. Call initialize() first.")
     return _context
+
+
+async def _cleanup_stale_streams(ctx: ServerContext) -> int:
+    """Remove streams that have exceeded TTL.
+
+    Args:
+        ctx: Server context containing active_streams
+
+    Returns:
+        Number of streams removed
+    """
+    now = time.monotonic()
+    stale_ids = [
+        stream_id
+        for stream_id, state in ctx.active_streams.items()
+        if now - state.created_at > STREAM_TTL_SECONDS
+    ]
+
+    for stream_id in stale_ids:
+        state = ctx.active_streams.pop(stream_id, None)
+        if state and state.task and not state.task.done():
+            state.task.cancel()
+            try:
+                await state.task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning(f"Error cancelling stale stream {stream_id}: {e}")
+        logger.debug(f"Cleaned up stale stream {stream_id}")
+
+    if stale_ids:
+        logger.info(f"Cleaned up {len(stale_ids)} stale stream(s)")
+
+    return len(stale_ids)
 
 
 @server.list_tools()
@@ -402,6 +442,16 @@ async def _handle_generate_stream_start(ctx: ServerContext, args: Dict[str, Any]
     Starts a background task that generates tokens and stores them in a buffer.
     Returns a stream_id that can be polled with generate_stream_read.
     """
+    # Clean up stale streams before checking limits
+    await _cleanup_stale_streams(ctx)
+
+    # Check stream limit
+    if len(ctx.active_streams) >= MAX_ACTIVE_STREAMS:
+        return {
+            "error": f"Maximum concurrent streams ({MAX_ACTIVE_STREAMS}) reached. "
+            "Cancel existing streams or wait for them to complete.",
+        }
+
     messages = args["messages"]
     max_tokens = args.get("max_tokens", 2048)
     temperature = args.get("temperature")
