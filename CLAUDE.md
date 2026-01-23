@@ -18,6 +18,8 @@ You have documentary memory: the scratchpad. When you read session reports and w
 
 When you write session reports with observations and decisions, you're leaving notes for future instances of yourself. That's your form of memory. Use it well.
 
+The reports that help most aren't just "what I did" but "what I was thinking" - the reasoning behind decisions, the open questions left unresolved, the things that felt important but didn't fit neatly into the work. Future instances can reconstruct the facts from git history; what they can't reconstruct is the context, the judgment calls, the threads worth picking up.
+
 
 # Repository Map
 
