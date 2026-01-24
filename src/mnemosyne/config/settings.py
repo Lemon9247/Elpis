@@ -78,6 +78,55 @@ class ConsolidationSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MNEMOSYNE_CONSOLIDATION_")
 
 
+class RetrievalSettings(BaseSettings):
+    """Memory retrieval configuration."""
+
+    emotion_weight: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Default weight for emotional similarity in mood-congruent retrieval",
+    )
+    candidate_multiplier: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="Retrieve N * multiplier candidates when reranking",
+    )
+    vector_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for vector similarity in hybrid search RRF",
+    )
+    bm25_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for BM25 keyword matching in hybrid search RRF",
+    )
+    recency_weight: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Weight for recency in quality scoring",
+    )
+    importance_weight: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Weight for importance score in quality scoring",
+    )
+    relevance_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for base relevance in quality scoring",
+    )
+
+    model_config = SettingsConfigDict(env_prefix="MNEMOSYNE_RETRIEVAL_")
+
+
 class LoggingSettings(BaseSettings):
     """Logging configuration."""
 
@@ -98,6 +147,7 @@ class Settings(BaseSettings):
 
     storage: StorageSettings = Field(default_factory=StorageSettings)
     consolidation: ConsolidationSettings = Field(default_factory=ConsolidationSettings)
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
     model_config = SettingsConfigDict(

@@ -31,6 +31,22 @@ buffer_threshold = 100
 # Minimum memories to form a cluster
 min_cluster_size = 2
 
+[retrieval]
+# Weight for emotional similarity in mood-congruent retrieval (0.0-1.0)
+emotion_weight = 0.3
+
+# Retrieve N * multiplier candidates when reranking
+candidate_multiplier = 2
+
+# Hybrid search RRF weights (should sum to 1.0)
+vector_weight = 0.5
+bm25_weight = 0.5
+
+# Quality scoring weights (should sum to 1.0)
+recency_weight = 0.3
+importance_weight = 0.2
+relevance_weight = 0.5
+
 [logging]
 # Log level: DEBUG, INFO, WARNING, ERROR
 level = "INFO"
