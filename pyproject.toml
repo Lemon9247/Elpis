@@ -35,6 +35,7 @@ dependencies = [
     "chromadb>=0.4.0",              # Vector database
     "sentence-transformers>=2.2.0", # Embedding generation
     "numpy>=1.24.0",                # Numerical operations
+    "rank-bm25>=0.2.2",             # BM25 keyword search for hybrid retrieval
     # Client dependencies (psyche)
     "prompt-toolkit>=3.0.52",       # Async REPL
     "rich>=13.0",                   # Output formatting
