@@ -135,6 +135,24 @@ class DreamConfig:
     store_insights: bool = True  # Whether to store dream insights as memories
     insight_importance_threshold: float = CONSOLIDATION_IMPORTANCE_THRESHOLD
 
+    # Dynamic query generation
+    use_dynamic_queries: bool = True  # Generate queries based on recent topics
+    dynamic_query_count: int = 2  # Number of dynamic queries to add
+
+
+# Trajectory-aware query modifiers
+TRAJECTORY_QUERY_MODIFIERS = {
+    # Spiral directions
+    "positive": ["progress", "growth", "what's working"],
+    "negative": ["comfort", "support", "what helps"],
+    "escalating": ["grounding", "calm moments", "stability"],
+    "withdrawing": ["energy", "motivation", "excitement"],
+    # Trends
+    "improving": ["keep momentum", "recent wins"],
+    "declining": ["turning points", "resilience"],
+    "oscillating": ["balance", "stability", "patterns"],
+}
+
 
 # Markers that suggest a dream produced something worth storing
 INSIGHT_MARKERS = [
@@ -182,6 +200,90 @@ class DreamHandler:
     def is_dreaming(self) -> bool:
         """Check if currently dreaming."""
         return self._dreaming
+
+    def _generate_dynamic_queries(
+        self, trajectory: Optional[dict], recent_topics: Optional[List[str]] = None
+    ) -> List[str]:
+        """
+        Generate dynamic queries based on trajectory and recent topics.
+
+        Args:
+            trajectory: Emotional trajectory dict from Elpis
+            recent_topics: Topics extracted from recent conversations
+
+        Returns:
+            List of dynamic query strings
+        """
+        queries = []
+
+        # Add trajectory-aware queries
+        if trajectory:
+            # Based on spiral direction
+            spiral_dir = trajectory.get("spiral_direction", "none")
+            if spiral_dir in TRAJECTORY_QUERY_MODIFIERS:
+                queries.extend(TRAJECTORY_QUERY_MODIFIERS[spiral_dir])
+
+            # Based on trend (if not stable)
+            trend = trajectory.get("trend", "stable")
+            if trend in TRAJECTORY_QUERY_MODIFIERS:
+                queries.extend(TRAJECTORY_QUERY_MODIFIERS[trend])
+
+            # Long time in negative quadrants -> seek comfort
+            time_in_quadrant = trajectory.get("time_in_quadrant", 0)
+            if time_in_quadrant > 300:  # 5+ minutes in same quadrant
+                queries.append("what brings peace")
+
+        # Add topic-based queries
+        if recent_topics:
+            for topic in recent_topics[:self.config.dynamic_query_count]:
+                queries.append(f"experiences with {topic}")
+                queries.append(f"what I learned about {topic}")
+
+        return queries[:self.config.dynamic_query_count * 2]  # Limit total
+
+    async def _extract_recent_topics(self) -> List[str]:
+        """
+        Extract topics from recent memories for dynamic queries.
+
+        Returns:
+            List of topic strings extracted from recent memories
+        """
+        if not self.core.is_mnemosyne_available:
+            return []
+
+        try:
+            # Search for recent memories (no specific query = recent by default)
+            recent = await self.core.search_memories(
+                "recent conversations", n_results=5
+            )
+
+            # Extract potential topics using simple keyword extraction
+            topics = set()
+            stop_words = {
+                "the", "a", "an", "is", "are", "was", "were", "be", "been",
+                "being", "have", "has", "had", "do", "does", "did", "will",
+                "would", "could", "should", "may", "might", "must", "shall",
+                "can", "need", "dare", "ought", "used", "to", "and", "but",
+                "or", "nor", "for", "yet", "so", "in", "on", "at", "by",
+                "with", "from", "of", "that", "this", "these", "those", "it",
+                "i", "you", "he", "she", "we", "they", "me", "him", "her",
+                "us", "them", "my", "your", "his", "its", "our", "their",
+            }
+
+            for memory in recent:
+                content = memory.get("content", "").lower()
+                # Extract words that might be topics (longer, not stop words)
+                words = content.split()
+                for word in words:
+                    clean = "".join(c for c in word if c.isalnum())
+                    if len(clean) > 4 and clean not in stop_words:
+                        topics.add(clean)
+
+            return list(topics)[:5]  # Return top 5 topics
+
+        except Exception as e:
+            logger.debug(f"Failed to extract recent topics: {e}")
+            return []
 
     async def start_dreaming(self) -> None:
         """Begin dream cycle (no clients connected)."""
@@ -254,6 +356,9 @@ class DreamHandler:
         """
         Retrieve memories for dream context based on emotional state.
 
+        Uses both static intention-based queries and dynamic queries generated
+        from trajectory and recent topics.
+
         Returns:
             Tuple of (memories, intention) where intention is selected based
             on current emotional quadrant.
@@ -264,13 +369,17 @@ class DreamHandler:
         # Get current emotional state and select intention
         intention = DEFAULT_INTENTION
         emotion_ctx = None
+        trajectory = None
 
         try:
             emotion = await self.core.get_emotion()
             quadrant = emotion.get("quadrant", "neutral")
+            trajectory = emotion.get("trajectory")
+
             if quadrant in DREAM_INTENTIONS:
                 intention = DREAM_INTENTIONS[quadrant]
                 logger.debug(f"Dream intention: {intention.theme} (quadrant: {quadrant})")
+
             emotion_ctx = {
                 "valence": emotion.get("valence", 0.0),
                 "arousal": emotion.get("arousal", 0.0),
@@ -278,11 +387,23 @@ class DreamHandler:
         except Exception as e:
             logger.debug(f"Could not get emotional state for dream: {e}")
 
-        # Retrieve memories using intention-specific queries
-        all_memories = []
-        memories_per_query = max(2, self.config.memory_query_count // len(intention.memory_queries))
+        # Build query list: static + dynamic
+        all_queries = list(intention.memory_queries)
 
-        for query in intention.memory_queries:
+        if self.config.use_dynamic_queries:
+            # Get dynamic queries based on trajectory and topics
+            recent_topics = await self._extract_recent_topics()
+            dynamic_queries = self._generate_dynamic_queries(trajectory, recent_topics)
+
+            if dynamic_queries:
+                all_queries.extend(dynamic_queries)
+                logger.debug(f"Added {len(dynamic_queries)} dynamic queries: {dynamic_queries[:3]}")
+
+        # Retrieve memories using combined queries
+        all_memories = []
+        memories_per_query = max(1, self.config.memory_query_count // len(all_queries))
+
+        for query in all_queries:
             try:
                 memories = await self.core.search_memories(
                     query,
