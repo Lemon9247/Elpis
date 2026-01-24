@@ -47,6 +47,17 @@ recency_weight = 0.3
 importance_weight = 0.2
 relevance_weight = 0.5
 
+# Quality scoring factors
+recency_decay_rate = 0.995          # Exponential decay per hour (~89% after 1 day)
+max_recency_hours = 720             # Cap recency calculation at 30 days
+max_content_length = 500            # Length at which length factor reaches 1.0
+semantic_type_factor = 1.2          # Boost for semantic vs episodic memories
+assistant_role_factor = 1.1         # Boost for assistant messages
+user_role_factor = 0.9              # Factor for user messages
+
+# Emotional similarity mode
+use_angular_similarity = false      # true = cosine (direction), false = Euclidean (distance)
+
 [logging]
 # Log level: DEBUG, INFO, WARNING, ERROR
 level = "INFO"
