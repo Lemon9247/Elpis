@@ -81,6 +81,7 @@ class ConsolidationSettings(BaseSettings):
 class RetrievalSettings(BaseSettings):
     """Memory retrieval configuration."""
 
+    # Hybrid search weights
     emotion_weight: float = Field(
         default=0.3,
         ge=0.0,
@@ -105,6 +106,8 @@ class RetrievalSettings(BaseSettings):
         le=1.0,
         description="Weight for BM25 keyword matching in hybrid search RRF",
     )
+
+    # Quality scoring weights
     recency_weight: float = Field(
         default=0.3,
         ge=0.0,
@@ -122,6 +125,48 @@ class RetrievalSettings(BaseSettings):
         ge=0.0,
         le=1.0,
         description="Weight for base relevance in quality scoring",
+    )
+
+    # Quality scoring factors
+    recency_decay_rate: float = Field(
+        default=0.995,
+        ge=0.9,
+        le=1.0,
+        description="Exponential decay rate per hour (0.995 = ~89% after 1 day)",
+    )
+    max_recency_hours: int = Field(
+        default=720,
+        ge=24,
+        description="Cap for recency calculation (default 30 days)",
+    )
+    max_content_length: int = Field(
+        default=500,
+        ge=100,
+        description="Content length at which length factor reaches 1.0",
+    )
+    semantic_type_factor: float = Field(
+        default=1.2,
+        ge=1.0,
+        le=2.0,
+        description="Quality multiplier for semantic memories vs episodic",
+    )
+    assistant_role_factor: float = Field(
+        default=1.1,
+        ge=0.5,
+        le=2.0,
+        description="Quality multiplier for assistant messages",
+    )
+    user_role_factor: float = Field(
+        default=0.9,
+        ge=0.5,
+        le=2.0,
+        description="Quality multiplier for user messages",
+    )
+
+    # Emotional similarity
+    use_angular_similarity: bool = Field(
+        default=False,
+        description="Use angular (cosine) similarity instead of Euclidean for emotions",
     )
 
     model_config = SettingsConfigDict(env_prefix="MNEMOSYNE_RETRIEVAL_")
