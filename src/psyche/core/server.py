@@ -542,6 +542,38 @@ When you need a tool, use this format and then STOP:
         """
         return await self._memory.retrieve_relevant(query, n)
 
+    async def search_memories(
+        self,
+        query: str,
+        n_results: int = 10,
+        emotional_context: Optional[Dict[str, float]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search memories with optional emotional context.
+
+        Used by dream handler for emotion-shaped memory retrieval.
+
+        Args:
+            query: Search query
+            n_results: Number of memories to retrieve
+            emotional_context: Optional dict with valence/arousal for mood-congruent retrieval
+
+        Returns:
+            List of memory dictionaries
+        """
+        if not self.mnemosyne or not self.mnemosyne.is_connected:
+            return []
+
+        try:
+            return await self.mnemosyne.search_memories(
+                query,
+                n_results=n_results,
+                emotional_context=emotional_context,
+            )
+        except Exception as e:
+            logger.warning(f"Memory search failed: {e}")
+            return []
+
     async def store_memory(
         self,
         content: str,
