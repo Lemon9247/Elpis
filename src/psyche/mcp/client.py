@@ -579,21 +579,33 @@ class MnemosyneClient:
         self,
         query: str,
         n_results: int = 10,
+        use_hybrid: bool = True,
+        emotional_context: Optional[Dict[str, float]] = None,
+        emotion_weight: float = 0.3,
     ) -> List[Dict[str, Any]]:
         """
-        Search memories by semantic similarity.
+        Search memories with hybrid semantic + keyword matching.
 
         Args:
             query: Search query
             n_results: Number of results to return
+            use_hybrid: Use hybrid search (BM25 + vector). Set False for pure vector.
+            emotional_context: Optional dict with valence/arousal for mood-congruent retrieval
+            emotion_weight: Weight for emotional similarity (0-1, default 0.3)
 
         Returns:
             List of matching memories
         """
-        result = await self._call_tool("search_memories", {
+        arguments: Dict[str, Any] = {
             "query": query,
             "n_results": n_results,
-        })
+            "use_hybrid": use_hybrid,
+        }
+        if emotional_context:
+            arguments["emotional_context"] = emotional_context
+            arguments["emotion_weight"] = emotion_weight
+
+        result = await self._call_tool("search_memories", arguments)
         return result.get("results", [])
 
     async def get_memory_stats(self) -> Dict[str, int]:

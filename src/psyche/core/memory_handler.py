@@ -133,13 +133,17 @@ class MemoryHandler:
         self,
         query: str,
         n: Optional[int] = None,
+        include_emotion: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Retrieve memories relevant to query from Mnemosyne.
 
+        Uses hybrid search (BM25 + vector) with optional mood-congruent retrieval.
+
         Args:
             query: The query text (typically user input)
             n: Number of memories to retrieve (uses config default if None)
+            include_emotion: Whether to include current emotional state for mood-congruent retrieval
 
         Returns:
             List of memory dictionaries, empty if no memories found or unavailable
@@ -154,9 +158,24 @@ class MemoryHandler:
             logger.info("Memory retrieval skipped: Mnemosyne not available")
             return []
 
+        # Get current emotional context for mood-congruent retrieval
+        emotional_ctx = None
+        if include_emotion and self.elpis_client and self.elpis_client.is_connected:
+            try:
+                emotion = await self.elpis_client.get_emotion()
+                emotional_ctx = {"valence": emotion.valence, "arousal": emotion.arousal}
+                logger.debug(f"Including emotional context: v={emotion.valence:.2f}, a={emotion.arousal:.2f}")
+            except Exception as e:
+                logger.debug(f"Could not get emotional state for retrieval: {e}")
+                # Graceful degradation - search works without emotion
+
         try:
             logger.info(f"Searching memories for: {query[:50]}...")
-            memories = await self.mnemosyne_client.search_memories(query, n_results=n)
+            memories = await self.mnemosyne_client.search_memories(
+                query,
+                n_results=n,
+                emotional_context=emotional_ctx,
+            )
 
             if not memories:
                 logger.info("No relevant memories found in Mnemosyne")
