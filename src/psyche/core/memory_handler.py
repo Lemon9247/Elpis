@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -16,6 +16,20 @@ from psyche.memory.compaction import CompactionResult, Message
 
 # Default path for local fallback storage
 DEFAULT_FALLBACK_DIR = Path.home() / ".psyche" / "fallback_memories"
+
+# Storage filtering constants
+MIN_MEMORY_LENGTH = 50  # Minimum characters for storage
+QUESTION_STARTERS = (
+    "who", "what", "where", "when", "why", "how",
+    "can", "do", "does", "is", "are", "will", "would",
+    "could", "should", "have", "has", "did",
+)
+KNOWLEDGE_INDICATORS = (
+    "I ", "My ", "I'm ", "I've ", "I'll ",
+    "You ", "Your ", "You're ", "You've ",
+    "The ", "This ", "That ", "These ", "Those ",
+    "We ", "Our ", "They ", "Their ",
+)
 
 
 @dataclass
@@ -75,6 +89,45 @@ class MemoryHandler:
             self.mnemosyne_client is not None
             and self.mnemosyne_client.is_connected
         )
+
+    def _should_store_message(self, msg: Message) -> Tuple[bool, str]:
+        """
+        Determine if a message is worth storing as a memory.
+
+        Filters out:
+        - Very short messages (under MIN_MEMORY_LENGTH chars)
+        - User questions (typically not useful for recall)
+
+        Args:
+            msg: Message to evaluate
+
+        Returns:
+            Tuple of (should_store, memory_type)
+        """
+        content = msg.content.strip()
+
+        # Skip very short messages
+        if len(content) < MIN_MEMORY_LENGTH:
+            return False, "episodic"
+
+        # User messages that are questions are rarely useful to recall
+        if msg.role == "user":
+            # Check if it's a question (has ? or starts with question word)
+            content_lower = content.lower()
+            if "?" in content:
+                return False, "episodic"
+            # Check for question starters
+            first_word = content_lower.split()[0] if content_lower.split() else ""
+            if first_word in QUESTION_STARTERS:
+                return False, "episodic"
+
+        # Assistant messages with factual/declarative content -> semantic
+        if msg.role == "assistant":
+            if any(indicator in content for indicator in KNOWLEDGE_INDICATORS):
+                return True, "semantic"
+
+        # Default: store as episodic
+        return True, "episodic"
 
     async def retrieve_relevant(
         self,
@@ -175,24 +228,35 @@ class MemoryHandler:
 
         success_count = 0
         total_count = 0
+        skipped_count = 0
 
         for msg in messages:
             if msg.role == "system":
                 continue  # Skip system prompts
+
+            # Apply storage filtering
+            should_store, memory_type = self._should_store_message(msg)
+            if not should_store:
+                skipped_count += 1
+                logger.debug(f"Skipping low-quality {msg.role} message: {msg.content[:30]}...")
+                continue
 
             total_count += 1
             try:
                 await self.mnemosyne_client.store_memory(
                     content=msg.content,
                     summary=msg.content[:MEMORY_SUMMARY_LENGTH],
-                    memory_type="episodic",
-                    tags=["compacted", msg.role],
+                    memory_type=memory_type,
+                    tags=["compacted", msg.role, memory_type],
                     emotional_context=emotional_context,
                 )
                 success_count += 1
                 logger.debug(f"Stored {msg.role} message to Mnemosyne")
             except Exception as e:
                 logger.error(f"Failed to store message to Mnemosyne: {type(e).__name__}: {e}")
+
+        if skipped_count > 0:
+            logger.debug(f"Filtered out {skipped_count} low-quality messages")
 
         if total_count == 0:
             return True  # No messages to store is a success
