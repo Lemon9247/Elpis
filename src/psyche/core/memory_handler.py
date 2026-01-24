@@ -19,16 +19,40 @@ DEFAULT_FALLBACK_DIR = Path.home() / ".psyche" / "fallback_memories"
 
 # Storage filtering constants
 MIN_MEMORY_LENGTH = 50  # Minimum characters for storage
+MAX_QUESTION_LENGTH = 200  # Questions longer than this may contain valuable context
+
+# Question starters that typically indicate low-value storage
 QUESTION_STARTERS = (
     "who", "what", "where", "when", "why", "how",
-    "can", "do", "does", "is", "are", "will", "would",
-    "could", "should", "have", "has", "did",
+    "can", "could", "would", "should",
+    "do", "does", "did",
+    "is", "are", "was", "were", "will",
+    "have", "has", "had",
 )
+
+# Indicators of declarative/informative content (high value)
 KNOWLEDGE_INDICATORS = (
     "I ", "My ", "I'm ", "I've ", "I'll ",
     "You ", "Your ", "You're ", "You've ",
     "The ", "This ", "That ", "These ", "Those ",
     "We ", "Our ", "They ", "Their ",
+)
+
+# Patterns that indicate high-value content worth storing
+HIGH_VALUE_PATTERNS = (
+    " means ", " is defined as ", " refers to ",  # Definitions
+    " because ", " therefore ", " thus ",  # Reasoning
+    " prefer ", " like ", " enjoy ", " love ", " hate ",  # Preferences
+    " always ", " never ", " usually ",  # Behavioral patterns
+    " remember ", " forgot ", " learned ",  # Memory-related
+    " important ", " significant ", " key ",  # Importance markers
+)
+
+# Patterns indicating low-value content
+LOW_VALUE_PATTERNS = (
+    "hello", "hi ", "hey ", "thanks", "thank you",
+    "okay", "ok ", "sure", "yes", "no ", "yeah",
+    "please", "sorry", "bye", "goodbye",
 )
 
 
@@ -94,9 +118,11 @@ class MemoryHandler:
         """
         Determine if a message is worth storing as a memory.
 
-        Filters out:
-        - Very short messages (under MIN_MEMORY_LENGTH chars)
-        - User questions (typically not useful for recall)
+        Uses multi-factor analysis:
+        - Message length and density
+        - Question vs statement patterns
+        - High-value content indicators (definitions, preferences, reasoning)
+        - Low-value content indicators (greetings, acknowledgments)
 
         Args:
             msg: Message to evaluate
@@ -105,26 +131,58 @@ class MemoryHandler:
             Tuple of (should_store, memory_type)
         """
         content = msg.content.strip()
+        content_lower = content.lower()
+        content_len = len(content)
 
         # Skip very short messages
-        if len(content) < MIN_MEMORY_LENGTH:
+        if content_len < MIN_MEMORY_LENGTH:
             return False, "episodic"
 
-        # User messages that are questions are rarely useful to recall
-        if msg.role == "user":
-            # Check if it's a question (has ? or starts with question word)
-            content_lower = content.lower()
-            if "?" in content:
-                return False, "episodic"
-            # Check for question starters
-            first_word = content_lower.split()[0] if content_lower.split() else ""
-            if first_word in QUESTION_STARTERS:
-                return False, "episodic"
+        # Check for low-value patterns (greetings, acknowledgments)
+        if content_len < 100:  # Only check short messages
+            if any(pattern in content_lower for pattern in LOW_VALUE_PATTERNS):
+                # Unless it also contains high-value content
+                if not any(pattern in content_lower for pattern in HIGH_VALUE_PATTERNS):
+                    return False, "episodic"
 
-        # Assistant messages with factual/declarative content -> semantic
+        # Check for high-value patterns - these always get stored as semantic
+        if any(pattern in content_lower for pattern in HIGH_VALUE_PATTERNS):
+            return True, "semantic"
+
+        # User message analysis
+        if msg.role == "user":
+            # Count question marks
+            question_count = content.count("?")
+
+            # Pure questions (short, single ?) are low value
+            if question_count == 1 and content_len < MAX_QUESTION_LENGTH:
+                # Check if it starts with a question word
+                first_word = content_lower.split()[0] if content_lower.split() else ""
+                if first_word in QUESTION_STARTERS:
+                    return False, "episodic"
+
+            # Long messages with context before question are valuable
+            # e.g., "I'm working on X and having trouble with Y. How do I fix it?"
+            if question_count > 0 and content_len >= MAX_QUESTION_LENGTH:
+                return True, "episodic"
+
+            # Statements from user (no question mark) may contain preferences/info
+            if question_count == 0:
+                return True, "episodic"
+
+        # Assistant message analysis
         if msg.role == "assistant":
+            # Check for knowledge indicators -> semantic memory
             if any(indicator in content for indicator in KNOWLEDGE_INDICATORS):
                 return True, "semantic"
+
+            # Longer assistant responses are typically informative
+            if content_len >= 200:
+                return True, "semantic"
+
+            # Short responses may be acknowledgments
+            if content_len < 100:
+                return True, "episodic"
 
         # Default: store as episodic
         return True, "episodic"
