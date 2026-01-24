@@ -17,6 +17,32 @@ from mnemosyne.core.constants import (
 
 
 @dataclass
+class EmotionalTrajectory:
+    """Emotional momentum over recent history."""
+
+    valence_velocity: float = 0.0  # Rate of change per minute
+    arousal_velocity: float = 0.0
+    trend: str = "stable"  # "improving", "declining", "stable", "oscillating"
+    spiral_detected: bool = False
+    time_in_quadrant: float = 0.0  # Seconds
+    momentum: str = "neutral"  # "positive", "negative", "neutral"
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EmotionalTrajectory":
+        """Create from dictionary returned by server."""
+        if not data:
+            return cls()
+        return cls(
+            valence_velocity=data.get("valence_velocity", 0.0),
+            arousal_velocity=data.get("arousal_velocity", 0.0),
+            trend=data.get("trend", "stable"),
+            spiral_detected=data.get("spiral_detected", False),
+            time_in_quadrant=data.get("time_in_quadrant", 0.0),
+            momentum=data.get("momentum", "neutral"),
+        )
+
+
+@dataclass
 class EmotionalState:
     """Representation of the inference server's emotional state."""
 
@@ -24,15 +50,20 @@ class EmotionalState:
     arousal: float = 0.0
     quadrant: str = "neutral"
     update_count: int = 0
+    trajectory: Optional[EmotionalTrajectory] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EmotionalState":
         """Create from dictionary returned by server."""
+        trajectory = None
+        if data.get("trajectory"):
+            trajectory = EmotionalTrajectory.from_dict(data["trajectory"])
         return cls(
             valence=data.get("valence", 0.0),
             arousal=data.get("arousal", 0.0),
             quadrant=data.get("quadrant", "neutral"),
             update_count=data.get("update_count", 0),
+            trajectory=trajectory,
         )
 
 
