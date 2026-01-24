@@ -32,7 +32,7 @@ from loguru import logger
 from mnemosyne.core.models import EmotionalContext, Memory, MemoryStatus, MemoryType
 
 if TYPE_CHECKING:
-    from mnemosyne.config.settings import StorageSettings
+    from mnemosyne.config.settings import RetrievalSettings, StorageSettings
 
 
 class ChromaMemoryStore:
@@ -47,6 +47,7 @@ class ChromaMemoryStore:
         persist_directory: Optional[str] = None,
         embedding_model: Optional[str] = None,
         settings: Optional[StorageSettings] = None,
+        retrieval_settings: Optional["RetrievalSettings"] = None,
     ):
         """
         Initialize the memory store.
@@ -55,6 +56,7 @@ class ChromaMemoryStore:
             persist_directory: Where to store the database (overrides settings)
             embedding_model: SentenceTransformer model name (overrides settings)
             settings: StorageSettings instance (provides defaults)
+            retrieval_settings: RetrievalSettings instance for search configuration
         """
         if not CHROMADB_AVAILABLE:
             raise RuntimeError(
@@ -72,6 +74,12 @@ class ChromaMemoryStore:
         if settings is None:
             from mnemosyne.config.settings import StorageSettings
             settings = StorageSettings()
+
+        if retrieval_settings is None:
+            from mnemosyne.config.settings import RetrievalSettings
+            retrieval_settings = RetrievalSettings()
+
+        self.retrieval_settings = retrieval_settings
 
         # Use explicit args if provided, otherwise fall back to settings
         _persist_directory = persist_directory or settings.persist_directory
@@ -111,10 +119,11 @@ class ChromaMemoryStore:
         self._bm25_corpus: List[List[str]] = []
         self._bm25_doc_ids: List[str] = []
         self._bm25_available = BM25_AVAILABLE
+        self._bm25_dirty = True  # Lazy rebuild flag
 
         if self._bm25_available:
-            self._rebuild_bm25_index()
-            logger.info("BM25 index initialized for hybrid search")
+            # Defer initial build until first search (lazy initialization)
+            logger.info("BM25 hybrid search available (lazy initialization)")
         else:
             logger.warning("rank-bm25 not available, hybrid search disabled")
 
@@ -158,9 +167,9 @@ class ChromaMemoryStore:
             }],
         )
 
-        # Rebuild BM25 index to include new memory
+        # Mark BM25 index as dirty (lazy rebuild on next search)
         if self._bm25_available:
-            self._rebuild_bm25_index()
+            self._bm25_dirty = True
 
         logger.debug(f"Added memory {memory.id} to {collection.name}")
 
@@ -454,7 +463,7 @@ class ChromaMemoryStore:
             if result["ids"]:
                 self.short_term.delete(ids=[memory_id])
                 if self._bm25_available:
-                    self._rebuild_bm25_index()
+                    self._bm25_dirty = True
                 logger.debug(f"Deleted memory {memory_id} from short_term")
                 return True
         except Exception as e:
@@ -466,7 +475,7 @@ class ChromaMemoryStore:
             if result["ids"]:
                 self.long_term.delete(ids=[memory_id])
                 if self._bm25_available:
-                    self._rebuild_bm25_index()
+                    self._bm25_dirty = True
                 logger.debug(f"Deleted memory {memory_id} from long_term")
                 return True
         except Exception as e:
@@ -494,10 +503,7 @@ class ChromaMemoryStore:
             if self.delete_memory(memory_id):
                 deleted_count += 1
 
-        # Rebuild BM25 index after batch deletion
-        if deleted_count > 0 and self._bm25_available:
-            self._rebuild_bm25_index()
-
+        # BM25 already marked dirty by individual delete_memory calls
         logger.debug(f"Batch deleted {deleted_count}/{len(memory_ids)} memories")
         return deleted_count
 
@@ -574,6 +580,11 @@ class ChromaMemoryStore:
         Returns:
             List of (memory_id, bm25_score) tuples, sorted by score descending
         """
+        # Lazy rebuild if index is dirty
+        if self._bm25_dirty:
+            self._rebuild_bm25_index()
+            self._bm25_dirty = False
+
         if not self._bm25_index or not self._bm25_doc_ids:
             return []
 
@@ -631,9 +642,6 @@ class ChromaMemoryStore:
         self,
         memory: Memory,
         base_score: float,
-        recency_weight: float = 0.3,
-        importance_weight: float = 0.2,
-        relevance_weight: float = 0.5,
     ) -> float:
         """
         Compute quality-adjusted score for a memory.
@@ -644,21 +652,21 @@ class ChromaMemoryStore:
         - Importance score
         - Content quality signals (length, type, role)
 
+        All weights and factors are configurable via RetrievalSettings.
+
         Args:
             memory: Memory to score
             base_score: Base relevance score (higher = better)
-            recency_weight: Weight for recency factor
-            importance_weight: Weight for importance score
-            relevance_weight: Weight for base relevance
 
         Returns:
             Quality-adjusted score (higher = better)
         """
-        # Recency decay (0.995^hours, so ~0.89 after 1 day, ~0.70 after 1 week)
-        decay_rate = 0.995
+        rs = self.retrieval_settings
+
+        # Recency decay (configurable rate, e.g., 0.995^hours)
         try:
             age_hours = (datetime.now() - memory.created_at).total_seconds() / 3600
-            recency = decay_rate ** min(age_hours, 720)  # Cap at 30 days
+            recency = rs.recency_decay_rate ** min(age_hours, rs.max_recency_hours)
         except Exception:
             recency = 0.5  # Default if created_at is invalid
 
@@ -667,19 +675,24 @@ class ChromaMemoryStore:
 
         # Content quality multipliers
         content_length = len(memory.content)
-        length_factor = min(content_length, 500) / 500  # 0-1, caps at 500 chars
+        length_factor = min(content_length, rs.max_content_length) / rs.max_content_length
 
         # Memory type factor (semantic memories are more valuable for recall)
-        type_factor = 1.2 if memory.memory_type == MemoryType.SEMANTIC else 1.0
+        type_factor = rs.semantic_type_factor if memory.memory_type == MemoryType.SEMANTIC else 1.0
 
-        # Role factor (assistant responses typically more informative)
-        role_factor = 1.1 if "assistant" in memory.tags else 0.9 if "user" in memory.tags else 1.0
+        # Role factor (configurable per role)
+        if "assistant" in memory.tags:
+            role_factor = rs.assistant_role_factor
+        elif "user" in memory.tags:
+            role_factor = rs.user_role_factor
+        else:
+            role_factor = 1.0
 
         # Weighted combination
         weighted_score = (
-            relevance_weight * base_score +
-            recency_weight * recency +
-            importance_weight * importance
+            rs.relevance_weight * base_score +
+            rs.recency_weight * recency +
+            rs.importance_weight * importance
         )
 
         # Apply quality multipliers
@@ -693,7 +706,9 @@ class ChromaMemoryStore:
         """
         Compute emotional similarity between query and memory.
 
-        Uses Euclidean distance in valence-arousal space, normalized to [0, 1].
+        Supports two modes (configured via retrieval_settings.use_angular_similarity):
+        - Euclidean: Distance in valence-arousal space (default)
+        - Angular: Cosine similarity of direction (ignores magnitude)
 
         Args:
             query_emotion: Current emotional context for query
@@ -705,13 +720,32 @@ class ChromaMemoryStore:
         if not query_emotion or not memory_emotion:
             return 0.5  # Neutral if either is missing
 
-        valence_diff = query_emotion.valence - memory_emotion.valence
-        arousal_diff = query_emotion.arousal - memory_emotion.arousal
-        distance = (valence_diff**2 + arousal_diff**2) ** 0.5
+        qv, qa = query_emotion.valence, query_emotion.arousal
+        mv, ma = memory_emotion.valence, memory_emotion.arousal
 
-        # Max distance in 2D space [-1, 1] x [-1, 1] is sqrt(8) ~ 2.83
-        max_distance = 2.83
-        similarity = 1.0 - (distance / max_distance)
+        if self.retrieval_settings.use_angular_similarity:
+            # Cosine similarity: focuses on direction, not magnitude
+            # Useful when (0.8, 0.8) and (0.4, 0.4) should be "similar"
+            dot_product = qv * mv + qa * ma
+            q_mag = (qv**2 + qa**2) ** 0.5
+            m_mag = (mv**2 + ma**2) ** 0.5
+
+            if q_mag < 1e-6 or m_mag < 1e-6:
+                return 0.5  # One or both are near origin (neutral)
+
+            cosine = dot_product / (q_mag * m_mag)
+            # Cosine is in [-1, 1], normalize to [0, 1]
+            similarity = (cosine + 1.0) / 2.0
+        else:
+            # Euclidean distance (original behavior)
+            valence_diff = qv - mv
+            arousal_diff = qa - ma
+            distance = (valence_diff**2 + arousal_diff**2) ** 0.5
+
+            # Max distance in 2D space [-1, 1] x [-1, 1] is sqrt(8) ~ 2.83
+            max_distance = 2.83
+            similarity = 1.0 - (distance / max_distance)
+
         return similarity
 
     def search_memories_hybrid(
@@ -759,8 +793,10 @@ class ChromaMemoryStore:
         else:
             collections = [self.short_term, self.long_term]
 
-        # Vector search across collections
+        # Vector search across collections - fetch full documents to avoid double-query
         vector_results: List[Tuple[str, float]] = []
+        memory_cache: Dict[str, Memory] = {}  # Cache to avoid re-fetching
+
         for collection in collections:
             count = collection.count()
             if count == 0:
@@ -768,18 +804,24 @@ class ChromaMemoryStore:
             results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=min(n_candidates, count),
-                include=["distances"],
+                include=["distances", "documents", "metadatas"],
             )
             for i, memory_id in enumerate(results["ids"][0]):
                 distance = results["distances"][0][i]
                 vector_results.append((memory_id, distance))
+                # Cache the memory object from query results
+                try:
+                    memory = self._query_result_to_memory(results, 0, i)
+                    memory_cache[memory_id] = memory
+                except Exception as e:
+                    logger.debug(f"Failed to parse memory {memory_id}: {e}")
 
         # Sort vector results by distance (lower = better)
         vector_results.sort(key=lambda x: x[1])
         vector_results = vector_results[:n_candidates]
 
         # BM25 search (if available)
-        if self._bm25_available and self._bm25_index and bm25_weight > 0:
+        if self._bm25_available and bm25_weight > 0:
             bm25_results = self._bm25_search(query, n_candidates)
         else:
             bm25_results = []
@@ -799,10 +841,13 @@ class ChromaMemoryStore:
                 for mem_id, dist in vector_results
             ]
 
-        # Fetch full memory objects
+        # Build memory list from cache, falling back to get_memory for BM25-only results
         memories_with_scores: List[Tuple[Memory, float]] = []
         for memory_id, rrf_score in combined_results:
-            memory = self.get_memory(memory_id)
+            memory = memory_cache.get(memory_id)
+            if not memory:
+                # BM25 found this but vector search didn't - fetch it
+                memory = self.get_memory(memory_id)
             if memory:
                 memories_with_scores.append((memory, rrf_score))
 
