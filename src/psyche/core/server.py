@@ -634,7 +634,12 @@ When you need a tool, use this format and then STOP:
         Returns:
             Dict with valence, arousal, quadrant
         """
-        if not self.elpis or not self.elpis.is_connected:
+        if not self.elpis:
+            logger.debug("get_emotion: Elpis client not set")
+            return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
+
+        if not self.elpis.is_connected:
+            logger.debug("get_emotion: Elpis client not connected")
             return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
 
         try:
