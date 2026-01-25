@@ -253,13 +253,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
 async def _handle_store_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle store_memory tool call."""
-    # Create emotional context if provided (with safe key access)
+    # Create emotional context if provided (with safe key access and validation)
     emotional_ctx = None
     if args.get("emotional_context"):
         ec = args["emotional_context"]
+        # Validate and clamp valence/arousal to valid range [-1, 1]
+        valence = max(-1.0, min(1.0, float(ec.get("valence", 0.0))))
+        arousal = max(-1.0, min(1.0, float(ec.get("arousal", 0.0))))
         emotional_ctx = EmotionalContext(
-            valence=ec.get("valence", 0.0),
-            arousal=ec.get("arousal", 0.0),
+            valence=valence,
+            arousal=arousal,
             quadrant=ec.get("quadrant", "neutral"),
         )
 
@@ -296,9 +299,12 @@ async def _handle_search_memories(args: Dict[str, Any]) -> Dict[str, Any]:
     emotional_ctx = None
     if args.get("emotional_context"):
         ec = args["emotional_context"]
+        # Validate and clamp valence/arousal to valid range [-1, 1]
+        valence = max(-1.0, min(1.0, float(ec.get("valence", 0.0))))
+        arousal = max(-1.0, min(1.0, float(ec.get("arousal", 0.0))))
         emotional_ctx = EmotionalContext(
-            valence=ec.get("valence", 0.0),
-            arousal=ec.get("arousal", 0.0),
+            valence=valence,
+            arousal=arousal,
             quadrant=ec.get("quadrant", "neutral"),
         )
 
@@ -502,6 +508,7 @@ def initialize(
     memory_store = ChromaMemoryStore(
         persist_directory=persist_directory,
         settings=settings.storage,
+        retrieval_settings=settings.retrieval,
     )
     logger.info("Memory store initialized")
 

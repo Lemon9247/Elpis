@@ -45,7 +45,7 @@ from mcp.types import (
 )
 
 from elpis.config.settings import Settings
-from elpis.emotion.state import EmotionalState
+from elpis.emotion.state import EmotionalState, TrajectoryConfig
 from elpis.emotion.regulation import HomeostasisRegulator
 from elpis.llm.base import InferenceEngine
 from elpis.llm.backends import create_backend
@@ -675,8 +675,14 @@ def initialize(settings: Optional[Settings] = None) -> ServerContext:
 
     logger.info("Initializing Elpis inference server...")
 
-    # Initialize emotional state
-    emotion_state = EmotionalState()
+    # Initialize emotional state with settings
+    emotion_state = EmotionalState(
+        baseline_valence=settings.emotion.baseline_valence,
+        baseline_arousal=settings.emotion.baseline_arousal,
+        steering_strength=settings.emotion.steering_strength,
+    )
+    # Apply trajectory config from settings
+    emotion_state._trajectory_config = TrajectoryConfig.from_settings(settings.emotion)
     regulator = HomeostasisRegulator(emotion_state)
     logger.info("Emotional system initialized")
 

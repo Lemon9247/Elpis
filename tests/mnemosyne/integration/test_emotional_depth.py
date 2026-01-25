@@ -145,20 +145,20 @@ class TestHybridSearchIntegration:
             id="happy",
             content="I felt so joyful and excited today",
             memory_type=MemoryType.EPISODIC,
-            emotional_context=EmotionalContext(valence=0.8, arousal=0.7),
+            emotional_context=EmotionalContext(valence=0.8, arousal=0.7, quadrant="excited"),
         )
         sad_memory = Memory(
             id="sad",
             content="I felt so down and tired today",
             memory_type=MemoryType.EPISODIC,
-            emotional_context=EmotionalContext(valence=-0.8, arousal=-0.5),
+            emotional_context=EmotionalContext(valence=-0.8, arousal=-0.5, quadrant="depleted"),
         )
 
         chroma_store.add_memory(happy_memory)
         chroma_store.add_memory(sad_memory)
 
         # Search with happy emotional context
-        happy_ctx = EmotionalContext(valence=0.7, arousal=0.6)
+        happy_ctx = EmotionalContext(valence=0.7, arousal=0.6, quadrant="excited")
         results = chroma_store.search_memories_hybrid(
             "how I felt today",
             n_results=2,
@@ -184,20 +184,20 @@ class TestHybridSearchIntegration:
             id="strong",
             content="Feeling intensely happy and energized",
             memory_type=MemoryType.EPISODIC,
-            emotional_context=EmotionalContext(valence=0.9, arousal=0.9),
+            emotional_context=EmotionalContext(valence=0.9, arousal=0.9, quadrant="excited"),
         )
         mild = Memory(
             id="mild",
             content="Feeling mildly happy and calm",
             memory_type=MemoryType.EPISODIC,
-            emotional_context=EmotionalContext(valence=0.3, arousal=0.3),
+            emotional_context=EmotionalContext(valence=0.3, arousal=0.3, quadrant="calm"),
         )
 
         store.add_memory(strong)
         store.add_memory(mild)
 
         # With angular similarity, both should be similar (same direction)
-        query_ctx = EmotionalContext(valence=0.5, arousal=0.5)
+        query_ctx = EmotionalContext(valence=0.5, arousal=0.5, quadrant="excited")
         similarity_strong = store._emotional_similarity(query_ctx, strong.emotional_context)
         similarity_mild = store._emotional_similarity(query_ctx, mild.emotional_context)
 
@@ -281,6 +281,7 @@ class TestTrajectoryIntegration:
 
     def test_trajectory_trend_detection(self):
         """Test trend detection with configurable thresholds."""
+        from datetime import timezone
         from elpis.emotion.state import EmotionalState, TrajectoryConfig
 
         state = EmotionalState()
@@ -289,10 +290,13 @@ class TestTrajectoryIntegration:
             trend_declining_threshold=-0.02,
         )
 
-        # Simulate improving trend
-        for i in range(5):
-            state.valence = -0.5 + 0.2 * i  # -0.5 -> 0.3
-            state.record_state()
+        # Simulate improving trend with controlled timestamps
+        # (record_state uses real time which is too fast for velocity detection)
+        for i in range(6):
+            timestamp = datetime.now(timezone.utc) - timedelta(minutes=5-i)
+            valence = -0.5 + 0.2 * i  # -0.5 -> 0.5
+            state._history.append((timestamp, valence, 0.0))
+        state.valence = 0.5
 
         trajectory = state.get_trajectory()
         assert trajectory.trend == "improving"
@@ -306,7 +310,8 @@ class TestDreamIntegration:
         from psyche.handlers.dream_handler import DreamConfig, DreamHandler
 
         core = MagicMock()
-        handler = DreamHandler(core, DreamConfig(use_dynamic_queries=True))
+        # Use higher dynamic_query_count to allow more queries
+        handler = DreamHandler(core, DreamConfig(use_dynamic_queries=True, dynamic_query_count=5))
 
         # Test with positive spiral trajectory
         trajectory = {
@@ -319,7 +324,7 @@ class TestDreamIntegration:
 
         # Should include spiral-direction queries
         assert any("progress" in q or "growth" in q for q in queries)
-        # Should include topic-based queries
+        # Should include topic-based queries (with higher count limit)
         assert any("python" in q for q in queries)
 
     def test_dynamic_query_for_negative_spiral(self):
@@ -327,7 +332,8 @@ class TestDreamIntegration:
         from psyche.handlers.dream_handler import DreamConfig, DreamHandler
 
         core = MagicMock()
-        handler = DreamHandler(core, DreamConfig(use_dynamic_queries=True))
+        # Use higher dynamic_query_count to allow more queries
+        handler = DreamHandler(core, DreamConfig(use_dynamic_queries=True, dynamic_query_count=5))
 
         trajectory = {
             "spiral_direction": "negative",

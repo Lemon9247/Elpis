@@ -1,9 +1,14 @@
 """Valence-Arousal emotional state model with trajectory tracking."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple
 import time
+
+
+def _utc_now() -> datetime:
+    """Return current time in UTC with timezone info."""
+    return datetime.now(timezone.utc)
 
 if TYPE_CHECKING:
     from elpis.config.settings import EmotionSettings
@@ -110,7 +115,7 @@ class EmotionalState:
 
     # Trajectory tracking
     _history: List[Tuple[datetime, float, float]] = field(default_factory=list)
-    _quadrant_entered_at: datetime = field(default_factory=datetime.now)
+    _quadrant_entered_at: datetime = field(default_factory=_utc_now)
     _last_quadrant: str = ""
     _trajectory_config: TrajectoryConfig = field(default_factory=TrajectoryConfig)
 
@@ -203,7 +208,7 @@ class EmotionalState:
 
     def record_state(self) -> None:
         """Record current state to history for trajectory tracking."""
-        now = datetime.now()
+        now = _utc_now()
         self._history.append((now, self.valence, self.arousal))
 
         # Trim old history based on config
@@ -235,7 +240,7 @@ class EmotionalState:
         spiral_detected, spiral_direction = self._detect_spiral()
 
         # Time in current quadrant
-        time_in_quadrant = (datetime.now() - self._quadrant_entered_at).total_seconds()
+        time_in_quadrant = (_utc_now() - self._quadrant_entered_at).total_seconds()
 
         # Overall momentum based on valence velocity (configurable thresholds)
         if valence_velocity > cfg.momentum_positive_threshold:
@@ -356,13 +361,24 @@ class EmotionalState:
         valence_delta = last_v - first_v
         arousal_delta = last_a - first_a
 
-        # Determine primary direction based on larger delta
-        if abs(valence_delta) > abs(arousal_delta):
+        # If both deltas are negligible, we have a spiral but no clear direction
+        # This can happen with circular movement or very small incremental changes
+        min_delta = 0.05  # Minimum meaningful change
+        if abs(valence_delta) < min_delta and abs(arousal_delta) < min_delta:
+            # Spiral detected but direction unclear - classify by final position
+            if abs(last_v - self.baseline_valence) > abs(last_a - self.baseline_arousal):
+                direction = "positive" if last_v > self.baseline_valence else "negative"
+            else:
+                direction = "escalating" if last_a > self.baseline_arousal else "withdrawing"
+        elif abs(valence_delta) > abs(arousal_delta):
             # Valence-dominant spiral
             direction = "positive" if valence_delta > 0 else "negative"
-        else:
+        elif abs(arousal_delta) > abs(valence_delta):
             # Arousal-dominant spiral
             direction = "escalating" if arousal_delta > 0 else "withdrawing"
+        else:
+            # Equal deltas - prefer valence as tie-breaker (more psychologically salient)
+            direction = "positive" if valence_delta > 0 else "negative"
 
         return True, direction
 

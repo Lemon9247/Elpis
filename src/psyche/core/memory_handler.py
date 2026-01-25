@@ -154,21 +154,27 @@ class MemoryHandler:
             # Count question marks
             question_count = content.count("?")
 
-            # Pure questions (short, single ?) are low value
-            if question_count == 1 and content_len < MAX_QUESTION_LENGTH:
-                # Check if it starts with a question word
-                first_word = content_lower.split()[0] if content_lower.split() else ""
-                if first_word in QUESTION_STARTERS:
-                    return False, "episodic"
-
             # Long messages with context before question are valuable
             # e.g., "I'm working on X and having trouble with Y. How do I fix it?"
-            if question_count > 0 and content_len >= MAX_QUESTION_LENGTH:
+            if content_len >= MAX_QUESTION_LENGTH:
                 return True, "episodic"
 
             # Statements from user (no question mark) may contain preferences/info
             if question_count == 0:
                 return True, "episodic"
+
+            # For questions, check if it's a simple question (low value)
+            # Simple = short + contains a question word anywhere
+            if question_count >= 1 and content_len < MAX_QUESTION_LENGTH:
+                # Check if ANY word is a question starter (not just first word)
+                # This catches "So what do you think?" and "Hmm, what is...?"
+                words = content_lower.split()
+                has_question_word = any(
+                    word.strip(",.;:!?") in QUESTION_STARTERS
+                    for word in words
+                )
+                if has_question_word:
+                    return False, "episodic"
 
         # Assistant message analysis
         if msg.role == "assistant":

@@ -511,19 +511,39 @@ class ChromaMemoryStore:
     # BM25 and Hybrid Search Methods
     # -------------------------------------------------------------------------
 
-    def _tokenize(self, text: str) -> List[str]:
-        """
-        Simple tokenization for BM25.
+    # Common English stop words to filter from BM25 indexing
+    _STOP_WORDS = frozenset([
+        "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+        "can", "could", "did", "do", "does", "doing", "done", "for", "from",
+        "had", "has", "have", "having", "he", "her", "here", "hers", "him",
+        "his", "how", "i", "if", "in", "into", "is", "it", "its", "just",
+        "me", "might", "more", "most", "must", "my", "no", "nor", "not", "of",
+        "on", "or", "our", "ours", "out", "own", "same", "she", "should", "so",
+        "some", "such", "than", "that", "the", "their", "theirs", "them", "then",
+        "there", "these", "they", "this", "those", "through", "to", "too", "under",
+        "up", "very", "was", "we", "were", "what", "when", "where", "which",
+        "while", "who", "whom", "why", "will", "with", "would", "you", "your",
+        "yours", "yourself", "yourselves",
+    ])
 
-        Converts to lowercase and extracts word tokens.
+    def _tokenize(self, text: str, remove_stop_words: bool = True) -> List[str]:
+        """
+        Tokenization for BM25 with optional stop word removal.
+
+        Converts to lowercase, extracts word tokens, and optionally
+        removes common English stop words for better BM25 relevance.
 
         Args:
             text: Text to tokenize
+            remove_stop_words: Whether to remove stop words (default True)
 
         Returns:
             List of lowercase word tokens
         """
-        return re.findall(r'\w+', text.lower())
+        tokens = re.findall(r'\w+', text.lower())
+        if remove_stop_words:
+            tokens = [t for t in tokens if t not in self._STOP_WORDS and len(t) > 1]
+        return tokens
 
     def _rebuild_bm25_index(self) -> None:
         """
@@ -688,15 +708,28 @@ class ChromaMemoryStore:
         else:
             role_factor = 1.0
 
-        # Weighted combination
+        # Normalize weights to sum to 1.0 for consistent scoring
+        total_weight = rs.relevance_weight + rs.recency_weight + rs.importance_weight
+        if total_weight > 0:
+            norm_relevance = rs.relevance_weight / total_weight
+            norm_recency = rs.recency_weight / total_weight
+            norm_importance = rs.importance_weight / total_weight
+        else:
+            norm_relevance = norm_recency = norm_importance = 1.0 / 3.0
+
+        # Weighted combination (normalized to [0, 1] range)
         weighted_score = (
-            rs.relevance_weight * base_score +
-            rs.recency_weight * recency +
-            rs.importance_weight * importance
+            norm_relevance * min(1.0, base_score) +  # Clamp base_score to [0, 1]
+            norm_recency * recency +
+            norm_importance * importance
         )
 
-        # Apply quality multipliers
-        return weighted_score * length_factor * type_factor * role_factor
+        # Apply quality multipliers (capped to avoid runaway scores)
+        # Multipliers adjust relative ranking but don't blow up scores
+        combined_multiplier = min(2.0, length_factor * type_factor * role_factor)
+
+        # Final score clamped to [0, 1] for consistent comparison
+        return min(1.0, weighted_score * combined_multiplier)
 
     def _emotional_similarity(
         self,

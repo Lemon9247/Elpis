@@ -139,6 +139,9 @@ class DreamConfig:
     use_dynamic_queries: bool = True  # Generate queries based on recent topics
     dynamic_query_count: int = 2  # Number of dynamic queries to add
 
+    # Threshold for "long time in quadrant" (seconds)
+    long_quadrant_threshold: float = 300.0  # 5 minutes in same quadrant triggers comfort-seeking
+
 
 # Trajectory-aware query modifiers
 TRAJECTORY_QUERY_MODIFIERS = {
@@ -230,7 +233,7 @@ class DreamHandler:
 
             # Long time in negative quadrants -> seek comfort
             time_in_quadrant = trajectory.get("time_in_quadrant", 0)
-            if time_in_quadrant > 300:  # 5+ minutes in same quadrant
+            if time_in_quadrant > self.config.long_quadrant_threshold:
                 queries.append("what brings peace")
 
         # Add topic-based queries
@@ -500,8 +503,8 @@ Your dream:"""
             return
 
         try:
-            # Check if Mnemosyne client is available through core
-            mnemosyne = getattr(self.core, '_mnemosyne', None)
+            # Check if Mnemosyne client is available through core (public attribute)
+            mnemosyne = self.core.mnemosyne
             if mnemosyne and mnemosyne.is_connected:
                 should_consolidate, reason, _, _ = await mnemosyne.should_consolidate()
                 if should_consolidate:

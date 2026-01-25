@@ -2,13 +2,30 @@
 
 Tests the trajectory detection with configurable thresholds
 and spiral direction awareness.
+
+NOTE: Trajectory velocity/momentum detection depends on time-based calculations.
+Tests that need to verify velocity use _add_history_entry() with controlled
+timestamps to simulate realistic time progression.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from elpis.config.settings import EmotionSettings
 from elpis.emotion.state import EmotionalState, EmotionalTrajectory, TrajectoryConfig
+
+
+def _add_history_entry(state: EmotionalState, valence: float, arousal: float, minutes_ago: float = 0) -> None:
+    """Add a history entry with controlled timestamp for testing.
+
+    Args:
+        state: EmotionalState to modify
+        valence: Valence value
+        arousal: Arousal value
+        minutes_ago: How many minutes in the past this entry should be (0 = now)
+    """
+    timestamp = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    state._history.append((timestamp, valence, arousal))
 
 
 class TestEmotionalTrajectoryIntegration:
@@ -55,9 +72,15 @@ class TestEmotionalTrajectoryIntegration:
         """Test positive momentum is detected with config threshold."""
         state = state_with_config
 
-        # Shift to positive valence repeatedly
-        for _ in range(5):
-            state.shift(0.1, 0.0)
+        # Add history with time spread to allow velocity calculation
+        # Simulating valence increasing over 5 minutes
+        _add_history_entry(state, 0.0, 0.0, minutes_ago=5)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=4)
+        _add_history_entry(state, 0.2, 0.0, minutes_ago=3)
+        _add_history_entry(state, 0.3, 0.0, minutes_ago=2)
+        _add_history_entry(state, 0.4, 0.0, minutes_ago=1)
+        _add_history_entry(state, 0.5, 0.0, minutes_ago=0)
+        state.valence = 0.5
 
         trajectory = state.get_trajectory()
         assert trajectory.momentum == "positive"
@@ -66,9 +89,15 @@ class TestEmotionalTrajectoryIntegration:
         """Test negative momentum is detected with config threshold."""
         state = state_with_config
 
-        # Shift to negative valence repeatedly
-        for _ in range(5):
-            state.shift(-0.1, 0.0)
+        # Add history with time spread to allow velocity calculation
+        # Simulating valence decreasing over 5 minutes
+        _add_history_entry(state, 0.0, 0.0, minutes_ago=5)
+        _add_history_entry(state, -0.1, 0.0, minutes_ago=4)
+        _add_history_entry(state, -0.2, 0.0, minutes_ago=3)
+        _add_history_entry(state, -0.3, 0.0, minutes_ago=2)
+        _add_history_entry(state, -0.4, 0.0, minutes_ago=1)
+        _add_history_entry(state, -0.5, 0.0, minutes_ago=0)
+        state.valence = -0.5
 
         trajectory = state.get_trajectory()
         assert trajectory.momentum == "negative"
@@ -89,10 +118,14 @@ class TestEmotionalTrajectoryIntegration:
         """Test improving trend is detected correctly."""
         state = state_with_config
 
-        # Clear improving trend
-        for i in range(6):
-            state.valence = -0.5 + 0.2 * i
-            state.record_state()
+        # Add history with time spread showing clear improving trend
+        _add_history_entry(state, -0.5, 0.0, minutes_ago=6)
+        _add_history_entry(state, -0.3, 0.0, minutes_ago=5)
+        _add_history_entry(state, -0.1, 0.0, minutes_ago=4)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=3)
+        _add_history_entry(state, 0.3, 0.0, minutes_ago=2)
+        _add_history_entry(state, 0.5, 0.0, minutes_ago=1)
+        state.valence = 0.5
 
         trajectory = state.get_trajectory()
         assert trajectory.trend == "improving"
@@ -101,10 +134,14 @@ class TestEmotionalTrajectoryIntegration:
         """Test declining trend is detected correctly."""
         state = state_with_config
 
-        # Clear declining trend
-        for i in range(6):
-            state.valence = 0.5 - 0.2 * i
-            state.record_state()
+        # Add history with time spread showing clear declining trend
+        _add_history_entry(state, 0.5, 0.0, minutes_ago=6)
+        _add_history_entry(state, 0.3, 0.0, minutes_ago=5)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=4)
+        _add_history_entry(state, -0.1, 0.0, minutes_ago=3)
+        _add_history_entry(state, -0.3, 0.0, minutes_ago=2)
+        _add_history_entry(state, -0.5, 0.0, minutes_ago=1)
+        state.valence = -0.5
 
         trajectory = state.get_trajectory()
         assert trajectory.trend == "declining"
@@ -113,10 +150,14 @@ class TestEmotionalTrajectoryIntegration:
         """Test stable trend when velocity is low."""
         state = state_with_config
 
-        # Minor fluctuations
-        for i in range(6):
-            state.valence = 0.0 + 0.005 * (i % 2)  # Tiny oscillation
-            state.record_state()
+        # Add history with constant values (no change = stable)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=6)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=5)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=4)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=3)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=2)
+        _add_history_entry(state, 0.1, 0.0, minutes_ago=1)
+        state.valence = 0.1
 
         trajectory = state.get_trajectory()
         assert trajectory.trend == "stable"
