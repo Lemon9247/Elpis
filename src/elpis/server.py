@@ -47,6 +47,8 @@ from mcp.types import (
 from elpis.config.settings import Settings
 from elpis.emotion.state import EmotionalState, TrajectoryConfig
 from elpis.emotion.regulation import HomeostasisRegulator
+from elpis.emotion.behavioral_monitor import BehavioralMonitor
+from elpis.emotion.sentiment import SentimentAnalyzer
 from elpis.llm.base import InferenceEngine
 from elpis.llm.backends import create_backend
 
@@ -76,12 +78,16 @@ class ServerContext:
         regulator: Homeostasis regulator for emotional updates
         settings: Server configuration settings
         active_streams: Dict mapping stream IDs to their state
+        behavioral_monitor: Optional behavioral pattern monitor
+        sentiment_analyzer: Optional sentiment analyzer for responses
     """
     llm: InferenceEngine
     emotion_state: EmotionalState
     regulator: HomeostasisRegulator
     settings: Settings
     active_streams: Dict[str, StreamState] = field(default_factory=dict)
+    behavioral_monitor: Optional[BehavioralMonitor] = None
+    sentiment_analyzer: Optional[SentimentAnalyzer] = None
 
 
 # Global context and server (initialized at startup)
@@ -367,6 +373,10 @@ async def _handle_generate(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str
     # Get steering coefficients for emotional expression
     emotion_coefficients = ctx.emotion_state.get_steering_coefficients()
 
+    # Mark generation start for behavioral monitoring
+    if ctx.behavioral_monitor:
+        ctx.behavioral_monitor.start_generation()
+
     # Run inference
     content = await ctx.llm.chat_completion(
         messages=messages,
@@ -376,8 +386,23 @@ async def _handle_generate(ctx: ServerContext, args: Dict[str, Any]) -> Dict[str
         emotion_coefficients=emotion_coefficients,
     )
 
-    # Update emotional state based on response
+    # Mark generation end for behavioral monitoring
+    if ctx.behavioral_monitor:
+        ctx.behavioral_monitor.end_generation()
+
+    # Update emotional state based on response (keyword-based)
     ctx.regulator.process_response(content)
+
+    # Optional: Enhanced sentiment analysis
+    if ctx.sentiment_analyzer:
+        result = ctx.sentiment_analyzer.analyze(content)
+        if result:
+            event = ctx.sentiment_analyzer.get_emotional_event(result)
+            if event:
+                event_type, intensity = event
+                ctx.regulator.process_event(
+                    event_type, intensity, context="sentiment analysis"
+                )
 
     return {
         "content": content,
@@ -476,6 +501,12 @@ async def _handle_generate_stream_start(ctx: ServerContext, args: Dict[str, Any]
     # Capture context references for the closure
     llm = ctx.llm
     regulator = ctx.regulator
+    behavioral_monitor = ctx.behavioral_monitor
+    sentiment_analyzer = ctx.sentiment_analyzer
+
+    # Mark generation start for behavioral monitoring
+    if behavioral_monitor:
+        behavioral_monitor.start_generation()
 
     # Start background task to generate tokens
     async def stream_producer():
@@ -493,10 +524,26 @@ async def _handle_generate_stream_start(ctx: ServerContext, args: Dict[str, Any]
             stream_state.error = str(e)
         finally:
             stream_state.is_complete = True
+
+            # Mark generation end for behavioral monitoring
+            if behavioral_monitor:
+                behavioral_monitor.end_generation()
+
             # Update emotional state based on full response
             if stream_state.buffer:
                 full_content = "".join(stream_state.buffer)
                 regulator.process_response(full_content)
+
+                # Optional: Enhanced sentiment analysis
+                if sentiment_analyzer:
+                    result = sentiment_analyzer.analyze(full_content)
+                    if result:
+                        event = sentiment_analyzer.get_emotional_event(result)
+                        if event:
+                            event_type, intensity = event
+                            regulator.process_event(
+                                event_type, intensity, context="sentiment analysis"
+                            )
 
     # Store task reference for proper lifecycle management
     stream_state.task = asyncio.create_task(stream_producer())
@@ -683,8 +730,25 @@ def initialize(settings: Optional[Settings] = None) -> ServerContext:
     )
     # Apply trajectory config from settings
     emotion_state._trajectory_config = TrajectoryConfig.from_settings(settings.emotion)
-    regulator = HomeostasisRegulator(emotion_state)
+
+    # Initialize regulator with all dynamic emotion settings
+    regulator = HomeostasisRegulator(
+        state=emotion_state,
+        decay_rate=settings.emotion.decay_rate,
+        max_delta=settings.emotion.max_delta,
+        streak_compounding_enabled=settings.emotion.streak_compounding_enabled,
+        streak_compounding_factor=settings.emotion.streak_compounding_factor,
+        mood_inertia_enabled=settings.emotion.mood_inertia_enabled,
+        mood_inertia_resistance=settings.emotion.mood_inertia_resistance,
+        decay_multiplier_excited=settings.emotion.decay_multiplier_excited,
+        decay_multiplier_frustrated=settings.emotion.decay_multiplier_frustrated,
+        decay_multiplier_calm=settings.emotion.decay_multiplier_calm,
+        decay_multiplier_depleted=settings.emotion.decay_multiplier_depleted,
+        response_analysis_threshold=settings.emotion.response_analysis_threshold,
+    )
     logger.info("Emotional system initialized")
+    logger.debug(f"  - Streak compounding: {settings.emotion.streak_compounding_enabled}")
+    logger.debug(f"  - Mood inertia: {settings.emotion.mood_inertia_enabled}")
 
     # Initialize LLM using the backend factory
     try:
@@ -702,12 +766,36 @@ def initialize(settings: Optional[Settings] = None) -> ServerContext:
         )
         raise
 
+    # Initialize behavioral monitor if enabled
+    behavioral_monitor = None
+    if settings.emotion.behavioral_monitoring_enabled:
+        behavioral_monitor = BehavioralMonitor(
+            on_event=regulator.process_event,
+            retry_loop_threshold=settings.emotion.retry_loop_threshold,
+            failure_streak_threshold=settings.emotion.failure_streak_threshold,
+            long_generation_seconds=settings.emotion.long_generation_seconds,
+            idle_period_seconds=settings.emotion.idle_period_seconds,
+        )
+        logger.info("Behavioral monitor initialized")
+
+    # Initialize sentiment analyzer if enabled
+    sentiment_analyzer = None
+    if settings.emotion.llm_emotion_analysis_enabled:
+        sentiment_analyzer = SentimentAnalyzer(
+            use_local_model=settings.emotion.use_local_sentiment_model,
+            min_length=settings.emotion.llm_analysis_min_length,
+            # LLM callback will be set after context is created if needed
+        )
+        logger.info("Sentiment analyzer initialized")
+
     # Create and store context
     _context = ServerContext(
         llm=llm,
         emotion_state=emotion_state,
         regulator=regulator,
         settings=settings,
+        behavioral_monitor=behavioral_monitor,
+        sentiment_analyzer=sentiment_analyzer,
     )
 
     return _context
