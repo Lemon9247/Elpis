@@ -19,7 +19,9 @@ Module Overview
 
       emotion/
         state.py          # EmotionalState, EmotionalTrajectory, TrajectoryConfig
-        regulation.py     # HomeostasisRegulator, event mappings
+        regulation.py     # HomeostasisRegulator, EventHistory, event mappings
+        behavioral_monitor.py  # BehavioralMonitor for usage pattern detection
+        sentiment.py      # SentimentAnalyzer for LLM-based emotion inference
 
       llm/
         base.py           # InferenceEngine abstract base class
@@ -51,22 +53,23 @@ Component Architecture
     |  |  - generate      |  |  - StreamState   |  |  - llm           | |
     |  |  - function_call |  |  - active_streams|  |  - emotion_state | |
     |  |  - get_emotion   |  |  - TTL cleanup   |  |  - regulator     | |
-    |  +--------+---------+  +--------+---------+  +--------+---------+ |
-    +-----------|----------------------|----------------------|---------+
-                |                      |                      |
-                v                      v                      v
+    |  +--------+---------+  +--------+---------+  |  - behavioral_mon| |
+    |           |                      |          |  - sentiment_anlz | |
+    +-----------|----------------------|----------+--------+---------+-+
+                |                      |                   |
+                v                      v                   v
     +------------------+    +------------------+    +------------------+
     | InferenceEngine  |    | EmotionalState   |    | HomeostasisReg.  |
     | (llm/base.py)    |    | (emotion/state)  |    | (emotion/reg.)   |
-    +--------+---------+    +------------------+    +------------------+
-             |
-    +--------+--------+
-    |                 |
-    v                 v
-    +----------+  +---------------+
-    | LlamaCpp |  | Transformers  |
-    | Backend  |  | Backend       |
-    +----------+  +-------+-------+
+    +--------+---------+    +------------------+    +--------+---------+
+             |                                              |
+    +--------+--------+                           +---------+---------+
+    |                 |                           |                   |
+    v                 v                           v                   v
+    +----------+  +---------------+    +------------------+  +------------------+
+    | LlamaCpp |  | Transformers  |    | BehavioralMonitor|  | SentimentAnalyzer|
+    | Backend  |  | Backend       |    | (behavioral_mon.)|  | (sentiment.py)   |
+    +----------+  +-------+-------+    +------------------+  +------------------+
                           |
                           v
                   +---------------+
@@ -89,8 +92,13 @@ components:
         regulator: HomeostasisRegulator # Event processing
         settings: Settings             # Configuration
         active_streams: Dict[str, StreamState]  # Stream tracking
+        behavioral_monitor: Optional[BehavioralMonitor]  # Pattern detection
+        sentiment_analyzer: Optional[SentimentAnalyzer]  # Deep emotion inference
 
 This pattern avoids global mutable state and makes testing easier.
+
+The ``behavioral_monitor`` and ``sentiment_analyzer`` are optional and created
+based on configuration settings.
 
 Inference Backend System
 ------------------------
@@ -259,24 +267,42 @@ HomeostasisRegulator
 
 **Module**: ``emotion/regulation.py``
 
-The :class:`HomeostasisRegulator` handles event processing and decay:
+The :class:`HomeostasisRegulator` handles event processing, decay, and dynamic
+emotional behavior:
 
 .. code-block:: python
 
     class HomeostasisRegulator:
+        def __init__(self, state, decay_rate=0.1, max_delta=0.5,
+                     streak_compounding_enabled=True,
+                     mood_inertia_enabled=True, ...):
+            self.event_history = EventHistory()  # Context-aware intensity
+            self.decay_multipliers = {...}       # Per-quadrant decay
+
         def process_event(self, event_type: str, intensity: float = 1.0) -> None:
+            # Apply time-based decay (with quadrant multiplier)
+            self._apply_decay()
+
             # Look up event deltas
             valence_delta, arousal_delta = EVENT_MAPPINGS[event_type]
 
-            # Apply intensity and clamp
-            valence_delta = clamp(valence_delta * intensity, -max_delta, max_delta)
-            arousal_delta = clamp(arousal_delta * intensity, -max_delta, max_delta)
+            # Apply context-aware intensity from event history
+            if self.streak_compounding_enabled:
+                intensity *= self.event_history.get_intensity_modifier(event_type)
 
-            # Apply decay toward baseline
-            self._apply_decay()
+            # Apply mood inertia resistance
+            if self.mood_inertia_enabled:
+                intensity *= self._get_inertia_modifier(valence_delta)
 
             # Shift emotional state
-            self.state.shift(valence_delta, arousal_delta)
+            self.state.shift(valence_delta * intensity, arousal_delta * intensity)
+
+Key features:
+
+- **Event History**: Tracks recent events for compounding/dampening
+- **Mood Inertia**: Resists rapid emotional swings based on trajectory
+- **Quadrant Decay**: Per-quadrant decay rate multipliers
+- **Multi-factor Response Analysis**: Weighted keyword scoring
 
 Event mappings define the emotional impact of each event type:
 
@@ -290,6 +316,64 @@ Event mappings define the emotional impact of each event type:
         "idle": (0.0, -0.1),         # Arousal decrease only
         # ... more events
     }
+
+BehavioralMonitor
+^^^^^^^^^^^^^^^^^
+
+**Module**: ``emotion/behavioral_monitor.py``
+
+The :class:`BehavioralMonitor` detects patterns in tool usage and generation:
+
+.. code-block:: python
+
+    class BehavioralMonitor:
+        def __init__(self, on_event, retry_loop_threshold=3, ...):
+            self.on_event = on_event  # Callback to trigger emotional events
+            self.tool_history = []     # Recent tool calls
+
+        def record_tool_call(self, tool_name, success, duration=None):
+            # Check for retry loops, failure streaks
+            self._check_retry_loop()
+            self._check_failure_streak()
+
+        def start_generation(self):
+            # Mark generation start time
+
+        def end_generation(self):
+            # Check for long generation, trigger if needed
+
+Detected patterns:
+
+- **Retry loops**: Same tool called N+ times -> frustration event
+- **Failure streaks**: N+ consecutive failures -> compounding error events
+- **Long generations**: >30s -> mild blocked event
+- **Idle periods**: >2min -> calming idle event
+
+SentimentAnalyzer
+^^^^^^^^^^^^^^^^^
+
+**Module**: ``emotion/sentiment.py``
+
+The :class:`SentimentAnalyzer` provides deep emotional inference:
+
+.. code-block:: python
+
+    class SentimentAnalyzer:
+        def __init__(self, use_local_model=True, min_length=200):
+            self._local_model = None  # Lazy-loaded DistilBERT
+
+        def analyze(self, content: str) -> Optional[SentimentResult]:
+            # Skip short content
+            # Try local model or LLM analysis
+            # Return sentiment score and emotions
+
+        def get_emotional_event(self, result) -> Optional[Tuple[str, float]]:
+            # Map sentiment to event type and intensity
+
+Supports two modes:
+
+- **Local model**: Fast DistilBERT-based classification
+- **LLM self-analysis**: Uses inference engine for deeper understanding
 
 MCP Server Layer
 ----------------

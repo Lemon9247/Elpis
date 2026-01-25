@@ -94,6 +94,17 @@ The system uses homeostatic regulation with decay toward baseline, responding to
 - `frustration` - Negative valence, high arousal
 - `idle` - Gradual arousal decrease
 
+### Dynamic Emotion Updates
+
+Elpis implements context-aware emotional dynamics:
+
+- **Event Compounding**: Repeated failures build frustration (1.0 -> 1.2 -> 1.4...)
+- **Success Dampening**: Repeated successes have diminishing returns (1.0 -> 0.8 -> 0.6...)
+- **Mood Inertia**: Resistance to rapid emotional swings based on current trajectory
+- **Quadrant-Specific Decay**: Frustration persists longer, calm fades faster
+- **Behavioral Monitoring**: Detects retry loops, failure streaks, and long generations
+- **Multi-Factor Response Analysis**: Weighted keyword scoring with frustration pattern detection
+
 ### Trajectory Tracking
 
 Beyond raw valence-arousal values, Elpis tracks emotional momentum:
@@ -329,15 +340,18 @@ mypy src/elpis
 - [x] Phase 2: MCP servers (inference, memory, tools, emotional regulation)
 - [x] Phase 3: Long-term memory consolidation with clustering
 - [x] Phase 4: Architecture refactor to server/client model
+- [x] Phase 5: Dynamic emotion updates
+  - [x] Event compounding and success dampening
+  - [x] Mood inertia and quadrant-specific decay
+  - [x] Behavioral monitoring (retry loops, failure streaks)
+  - [x] Multi-factor response analysis with frustration detection
+  - [x] Optional sentiment analysis (local model or LLM)
 - [ ] Future: Memory retrieval quality
   - [ ] Hybrid search (BM25 + vector with RRF fusion)
   - [ ] Storage-side filtering (skip questions, min length)
   - [ ] Quality-weighted ranking (recency, importance, type)
   - [ ] Memory cleanup tools
-- [ ] Future: Emotional system enhancements
-  - [ ] More nuanced emotion mapping
-  - [ ] Event history and emotional momentum
-  - [ ] Personality profiles with baseline presets
+- [ ] Future: Personality profiles with baseline presets
 - [ ] Future: Advanced memory (graph-based, cross-encoder reranking)
 
 ## Author and License
