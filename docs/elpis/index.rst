@@ -117,7 +117,8 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   configuration
+   architecture
    emotion-system
    backends
+   configuration
    api/index

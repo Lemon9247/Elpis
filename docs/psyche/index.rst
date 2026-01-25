@@ -160,6 +160,7 @@ Then connect with Hermes (see :doc:`../hermes/index`).
    :maxdepth: 2
    :caption: User Guide
 
+   architecture
    features
    tools
 

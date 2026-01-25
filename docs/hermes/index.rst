@@ -176,6 +176,12 @@ Command-line options:
 
 .. toctree::
    :maxdepth: 2
+   :caption: User Guide
+
+   architecture
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    api/index
