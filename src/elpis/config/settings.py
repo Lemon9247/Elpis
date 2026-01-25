@@ -181,6 +181,111 @@ class EmotionSettings(BaseSettings):
         description="Minimum increasing distances to detect a spiral",
     )
 
+    # Context-aware intensity (event compounding/dampening)
+    streak_compounding_enabled: bool = Field(
+        default=True,
+        description="Enable event compounding for repeated failures and success dampening",
+    )
+    streak_compounding_factor: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Intensity change per repeated event",
+    )
+
+    # Mood inertia (resistance to rapid emotional changes)
+    mood_inertia_enabled: bool = Field(
+        default=True,
+        description="Enable mood inertia to resist rapid emotional swings",
+    )
+    mood_inertia_resistance: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Maximum resistance factor for counter-momentum events",
+    )
+
+    # Quadrant-specific decay multipliers
+    # Lower values = emotion persists longer, higher = decays faster
+    decay_multiplier_excited: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=3.0,
+        description="Decay rate multiplier for excited quadrant",
+    )
+    decay_multiplier_frustrated: float = Field(
+        default=0.7,
+        ge=0.1,
+        le=3.0,
+        description="Decay rate multiplier for frustrated quadrant (persists longer)",
+    )
+    decay_multiplier_calm: float = Field(
+        default=1.2,
+        ge=0.1,
+        le=3.0,
+        description="Decay rate multiplier for calm quadrant (decays slightly faster)",
+    )
+    decay_multiplier_depleted: float = Field(
+        default=0.8,
+        ge=0.1,
+        le=3.0,
+        description="Decay rate multiplier for depleted quadrant (persists)",
+    )
+
+    # Response analysis settings
+    response_analysis_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum score threshold to trigger emotion from response analysis",
+    )
+
+    # Behavioral monitoring
+    behavioral_monitoring_enabled: bool = Field(
+        default=True,
+        description="Enable behavioral pattern monitoring (retry loops, failure streaks)",
+    )
+    retry_loop_threshold: int = Field(
+        default=3,
+        ge=2,
+        le=10,
+        description="Number of same-tool calls to detect a retry loop",
+    )
+    failure_streak_threshold: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Number of consecutive failures to trigger compounding",
+    )
+    long_generation_seconds: float = Field(
+        default=30.0,
+        ge=5.0,
+        le=300.0,
+        description="Duration in seconds to consider a generation 'long'",
+    )
+    idle_period_seconds: float = Field(
+        default=120.0,
+        ge=30.0,
+        le=600.0,
+        description="Duration without activity to trigger calming idle event",
+    )
+
+    # LLM-based emotion analysis (optional enhancement)
+    llm_emotion_analysis_enabled: bool = Field(
+        default=False,
+        description="Enable LLM-based emotion analysis for deeper response understanding",
+    )
+    llm_analysis_min_length: int = Field(
+        default=200,
+        ge=50,
+        le=1000,
+        description="Minimum response length (chars) to trigger LLM analysis",
+    )
+    use_local_sentiment_model: bool = Field(
+        default=True,
+        description="Use lightweight local sentiment model instead of full LLM",
+    )
+
     model_config = SettingsConfigDict(env_prefix="ELPIS_EMOTION_")
 
 

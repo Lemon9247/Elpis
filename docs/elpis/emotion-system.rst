@@ -166,6 +166,72 @@ and arousal deltas:
 - ``intensity=1.0``: Normal impact (default)
 - ``intensity=2.0``: Double the impact
 
+Context-Aware Intensity (Event Compounding)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The regulator tracks recent events to dynamically adjust intensity based on patterns:
+
+**Event Compounding** (negative events):
+    Repeated failures increase intensity: 1.0 → 1.2 → 1.4 → ... (capped at 2.0)
+
+**Success Dampening** (positive events):
+    Repeated successes decrease intensity: 1.0 → 0.8 → 0.6 → ... (floor at 0.5)
+
+This creates realistic emotional dynamics where:
+
+- Repeated failures build frustration over time
+- Repeated successes feel less exciting (diminishing returns)
+- Events older than 10 minutes are forgotten
+
+.. code-block:: python
+
+    # EventHistory tracks recent events
+    from elpis.emotion.regulation import EventHistory
+
+    history = EventHistory(
+        compounding_factor=0.2,  # Intensity increase per repeated failure
+        dampening_factor=0.2,    # Intensity decrease per repeated success
+        max_compounding=2.0,     # Maximum intensity multiplier
+        min_dampening=0.5,       # Minimum intensity multiplier
+    )
+
+    # Get streak type
+    streak = history.get_streak_type()  # "failure_streak", "success_streak", or None
+
+Configuration:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_STREAK_COMPOUNDING_ENABLED=true
+    ELPIS_EMOTION_STREAK_COMPOUNDING_FACTOR=0.2
+
+Mood Inertia
+^^^^^^^^^^^^
+
+Mood inertia resists rapid emotional swings based on current trajectory:
+
+**Aligned events**: Events matching current momentum get a slight boost (1.1x)
+**Counter events**: Events opposing strong momentum face resistance (0.6x-0.8x)
+
+This prevents jarring emotional whiplash and creates smoother transitions:
+
+.. code-block:: python
+
+    # When trending positive (positive valence_velocity):
+    # - A success event gets 1.1x intensity (aligned)
+    # - A failure event gets 0.6-0.8x intensity (resisted)
+
+    # When trending negative:
+    # - A failure event gets 1.1x intensity (aligned)
+    # - A success event gets 0.6-0.8x intensity (resisted)
+
+Configuration:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_MOOD_INERTIA_ENABLED=true
+    ELPIS_EMOTION_MOOD_INERTIA_RESISTANCE=0.4  # Max resistance factor
+
 Homeostasis
 -----------
 
@@ -187,6 +253,44 @@ Emotional state decays exponentially toward baseline:
 The decay rate (default 0.1 per second) determines how quickly emotions
 return to baseline. After about 10 seconds without events, strong emotions
 will have substantially faded.
+
+Quadrant-Specific Decay Rates
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Different emotional states decay at different rates, reflecting psychological
+reality where some emotions persist longer than others:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 55
+
+   * - Quadrant
+     - Multiplier
+     - Effect
+   * - ``excited``
+     - 1.0
+     - Baseline decay rate
+   * - ``frustrated``
+     - 0.7
+     - Frustration persists longer (30% slower decay)
+   * - ``calm``
+     - 1.2
+     - Calm states fade faster (20% faster decay)
+   * - ``depleted``
+     - 0.8
+     - Depletion persists (20% slower decay)
+
+Lower multiplier = emotion persists longer. Higher multiplier = faster return
+to baseline.
+
+Configuration:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_DECAY_MULTIPLIER_EXCITED=1.0
+    ELPIS_EMOTION_DECAY_MULTIPLIER_FRUSTRATED=0.7
+    ELPIS_EMOTION_DECAY_MULTIPLIER_CALM=1.2
+    ELPIS_EMOTION_DECAY_MULTIPLIER_DEPLETED=0.8
 
 Configuring Baseline
 ^^^^^^^^^^^^^^^^^^^^
@@ -378,6 +482,145 @@ The current emotional state can be retrieved via MCP:
 
     # MCP resource read
     uri = "emotion://state"
+
+Enhanced Response Analysis
+--------------------------
+
+The regulator analyzes generated content to infer emotional events using
+multi-factor weighted scoring instead of simple keyword matching.
+
+Multi-Factor Scoring
+^^^^^^^^^^^^^^^^^^^^
+
+Response analysis scores content across multiple emotion categories:
+
+- **Success words**: "successfully", "completed", "fixed", "working", "solved"
+- **Error words**: "error", "failed", "cannot", "exception", "broken"
+- **Frustration words**: "still", "again", "yet", "another", "keeps"
+- **Exploration words**: "interesting", "discover", "learn", "novel"
+- **Uncertainty words**: "unsure", "uncertain", "might", "perhaps"
+
+Scores use diminishing returns (sqrt normalization) to prevent gaming by
+repeating keywords. Only the dominant emotion is triggered, and only if
+its score exceeds the threshold.
+
+Frustration Pattern Detection
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The analyzer detects frustration patterns where amplifiers like "still" or
+"again" appear near error words:
+
+- "still getting the same error" -> triggers frustration event
+- "yet another failure occurred" -> triggers frustration event
+
+Configuration:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_RESPONSE_ANALYSIS_THRESHOLD=0.3  # Score threshold to trigger
+
+Behavioral Monitoring
+---------------------
+
+The :class:`~elpis.emotion.behavioral_monitor.BehavioralMonitor` detects patterns
+in tool usage and generation behavior to trigger appropriate emotional events.
+
+Detected Patterns
+^^^^^^^^^^^^^^^^^
+
+**Retry Loops**
+    Same tool called 3+ times in succession triggers a frustration event.
+    Indicates the system is stuck repeating the same action.
+
+**Failure Streaks**
+    2+ consecutive tool failures trigger compounding error events.
+    Intensity increases with streak length.
+
+**Long Generations**
+    Generation taking >30 seconds triggers a mild "blocked" event.
+    Suggests the system is struggling with the task.
+
+**Idle Periods**
+    No activity for >2 minutes triggers a calming "idle" event.
+    Helps the system return to baseline when not actively working.
+
+.. code-block:: python
+
+    from elpis.emotion.behavioral_monitor import BehavioralMonitor
+
+    monitor = BehavioralMonitor(
+        on_event=regulator.process_event,
+        retry_loop_threshold=3,
+        failure_streak_threshold=2,
+        long_generation_seconds=30.0,
+        idle_period_seconds=120.0,
+    )
+
+    # Record tool calls
+    monitor.record_tool_call("search", success=False)
+
+    # Track generation timing
+    monitor.start_generation()
+    # ... generation happens ...
+    monitor.end_generation()
+
+Configuration:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_BEHAVIORAL_MONITORING_ENABLED=true
+    ELPIS_EMOTION_RETRY_LOOP_THRESHOLD=3
+    ELPIS_EMOTION_FAILURE_STREAK_THRESHOLD=2
+    ELPIS_EMOTION_LONG_GENERATION_SECONDS=30.0
+    ELPIS_EMOTION_IDLE_PERIOD_SECONDS=120.0
+
+Sentiment Analysis (Optional)
+-----------------------------
+
+The :class:`~elpis.emotion.sentiment.SentimentAnalyzer` provides deeper
+emotional inference using either a local sentiment model or LLM self-analysis.
+
+Local Sentiment Model
+^^^^^^^^^^^^^^^^^^^^^
+
+Uses a lightweight DistilBERT model fine-tuned for sentiment classification:
+
+- Fast inference (~50ms per response)
+- No external API calls
+- Maps sentiment score to emotional events
+
+.. code-block:: python
+
+    from elpis.emotion.sentiment import SentimentAnalyzer
+
+    analyzer = SentimentAnalyzer(
+        use_local_model=True,
+        min_length=200,  # Skip short responses
+    )
+
+    result = analyzer.analyze(response_text)
+    if result:
+        event = analyzer.get_emotional_event(result)
+        if event:
+            event_type, intensity = event
+            regulator.process_event(event_type, intensity)
+
+LLM Self-Analysis
+^^^^^^^^^^^^^^^^^
+
+Alternatively, use the inference engine itself for emotion analysis:
+
+- Deeper understanding of nuanced content
+- More expensive (additional inference call)
+- Better for complex or domain-specific responses
+
+Configuration:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_LLM_EMOTION_ANALYSIS_ENABLED=false  # Disabled by default
+    ELPIS_EMOTION_LLM_ANALYSIS_MIN_LENGTH=200
+    ELPIS_EMOTION_USE_LOCAL_SENTIMENT_MODEL=true
 
 Training Steering Vectors
 -------------------------

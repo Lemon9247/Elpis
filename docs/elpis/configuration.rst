@@ -119,6 +119,109 @@ These settings control emotional trajectory tracking and pattern detection.
      - ``3``
      - Consecutive distance increases needed to detect a spiral
 
+Dynamic Emotion Settings
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+These settings control context-aware emotional dynamics.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 10 50
+
+   * - Variable
+     - Default
+     - Description
+   * - ``ELPIS_EMOTION_STREAK_COMPOUNDING_ENABLED``
+     - ``true``
+     - Enable event compounding for repeated failures
+   * - ``ELPIS_EMOTION_STREAK_COMPOUNDING_FACTOR``
+     - ``0.2``
+     - Intensity change per repeated event (0.0-1.0)
+   * - ``ELPIS_EMOTION_MOOD_INERTIA_ENABLED``
+     - ``true``
+     - Enable mood inertia to resist rapid swings
+   * - ``ELPIS_EMOTION_MOOD_INERTIA_RESISTANCE``
+     - ``0.4``
+     - Maximum resistance factor for counter-momentum events
+   * - ``ELPIS_EMOTION_RESPONSE_ANALYSIS_THRESHOLD``
+     - ``0.3``
+     - Minimum score to trigger emotion from response analysis
+
+Quadrant Decay Settings
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Per-quadrant decay rate multipliers. Lower = emotion persists longer.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 10 50
+
+   * - Variable
+     - Default
+     - Description
+   * - ``ELPIS_EMOTION_DECAY_MULTIPLIER_EXCITED``
+     - ``1.0``
+     - Decay rate for excited quadrant (baseline)
+   * - ``ELPIS_EMOTION_DECAY_MULTIPLIER_FRUSTRATED``
+     - ``0.7``
+     - Decay rate for frustrated quadrant (persists longer)
+   * - ``ELPIS_EMOTION_DECAY_MULTIPLIER_CALM``
+     - ``1.2``
+     - Decay rate for calm quadrant (decays faster)
+   * - ``ELPIS_EMOTION_DECAY_MULTIPLIER_DEPLETED``
+     - ``0.8``
+     - Decay rate for depleted quadrant (persists)
+
+Behavioral Monitoring Settings
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These settings control behavioral pattern detection.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 10 50
+
+   * - Variable
+     - Default
+     - Description
+   * - ``ELPIS_EMOTION_BEHAVIORAL_MONITORING_ENABLED``
+     - ``true``
+     - Enable behavioral pattern monitoring
+   * - ``ELPIS_EMOTION_RETRY_LOOP_THRESHOLD``
+     - ``3``
+     - Same-tool calls to detect a retry loop
+   * - ``ELPIS_EMOTION_FAILURE_STREAK_THRESHOLD``
+     - ``2``
+     - Consecutive failures for compounding
+   * - ``ELPIS_EMOTION_LONG_GENERATION_SECONDS``
+     - ``30.0``
+     - Duration to consider a generation "long"
+   * - ``ELPIS_EMOTION_IDLE_PERIOD_SECONDS``
+     - ``120.0``
+     - Duration without activity for idle event
+
+Sentiment Analysis Settings
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These settings control optional LLM-based emotion analysis.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 10 50
+
+   * - Variable
+     - Default
+     - Description
+   * - ``ELPIS_EMOTION_LLM_EMOTION_ANALYSIS_ENABLED``
+     - ``false``
+     - Enable LLM-based emotion analysis
+   * - ``ELPIS_EMOTION_LLM_ANALYSIS_MIN_LENGTH``
+     - ``200``
+     - Minimum response length (chars) to analyze
+   * - ``ELPIS_EMOTION_USE_LOCAL_SENTIMENT_MODEL``
+     - ``true``
+     - Use local DistilBERT instead of full LLM
+
 Logging Settings
 ^^^^^^^^^^^^^^^^
 
