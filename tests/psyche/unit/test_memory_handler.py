@@ -176,7 +176,9 @@ class TestRetrieveRelevant:
         result = await handler.retrieve_relevant("test query")
 
         assert result == expected_memories
-        mock_mnemosyne.search_memories.assert_called_once_with("test query", n_results=3)
+        mock_mnemosyne.search_memories.assert_called_once_with(
+            "test query", n_results=3, emotional_context=None
+        )
 
     @pytest.mark.asyncio
     async def test_retrieve_relevant_custom_count(self):
@@ -193,7 +195,9 @@ class TestRetrieveRelevant:
 
         await handler.retrieve_relevant("test query", n=10)
 
-        mock_mnemosyne.search_memories.assert_called_once_with("test query", n_results=10)
+        mock_mnemosyne.search_memories.assert_called_once_with(
+            "test query", n_results=10, emotional_context=None
+        )
 
     @pytest.mark.asyncio
     async def test_retrieve_relevant_handles_exception(self):
@@ -327,7 +331,8 @@ class TestStoreMessages:
 
         messages = [
             Message(role="system", content="System prompt"),
-            Message(role="user", content="Hello"),
+            # Use a statement (no ?) that's long enough to pass filtering
+            Message(role="user", content="I want to implement a feature for searching through memories in the system"),
         ]
         result = await handler.store_messages(messages)
 
@@ -336,7 +341,7 @@ class TestStoreMessages:
 
     @pytest.mark.asyncio
     async def test_store_messages_success(self):
-        """Should store all non-system messages."""
+        """Should store all non-system messages that pass filtering."""
         mock_elpis = MagicMock()
         mock_mnemosyne = MagicMock()
         mock_mnemosyne.is_connected = True
@@ -348,8 +353,10 @@ class TestStoreMessages:
         )
 
         messages = [
-            Message(role="user", content="Hello"),
-            Message(role="assistant", content="Hi there"),
+            # User statement (no ?) long enough to pass filtering
+            Message(role="user", content="I want to build a memory system that stores important conversations"),
+            # Assistant response long enough to pass filtering
+            Message(role="assistant", content="That sounds like a great project. I can help you design and implement a memory system for storing conversations."),
         ]
         result = await handler.store_messages(messages)
 
@@ -369,7 +376,8 @@ class TestStoreMessages:
             elpis_client=mock_elpis,
         )
 
-        messages = [Message(role="user", content="Hello")]
+        # User statement (no ?) long enough to pass filtering
+        messages = [Message(role="user", content="I would like to build a persistent memory system for this application")]
         emotional_context = {"valence": 0.5, "arousal": 0.3}
         await handler.store_messages(messages, emotional_context)
 
@@ -407,8 +415,10 @@ class TestStoreMessages:
         )
 
         messages = [
-            Message(role="user", content="Hello"),
-            Message(role="assistant", content="Hi"),
+            # User statement (no ?) long enough to pass filtering
+            Message(role="user", content="I want to build a memory system that can store and retrieve conversations"),
+            # Assistant response long enough to pass filtering
+            Message(role="assistant", content="That sounds like a great project. I can help you design a memory system for conversations."),
         ]
         result = await handler.store_messages(messages)
 
@@ -577,8 +587,11 @@ class TestHandleCompaction:
             elpis_client=mock_elpis,
         )
 
-        # Pre-stage some messages
-        handler._staged_messages = [Message(role="user", content="Staged message")]
+        # Pre-stage some messages (user statement long enough to pass filtering)
+        handler._staged_messages = [Message(
+            role="user",
+            content="I want to implement a feature for persisting memory across sessions in this application"
+        )]
 
         result = CompactionResult(
             messages=[],

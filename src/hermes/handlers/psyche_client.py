@@ -488,8 +488,12 @@ class RemotePsycheClient(PsycheClient):
             async with self._session.get(f"{self.base_url}/v1/psyche/emotion") as resp:
                 if resp.status == 200:
                     return await resp.json()
+                from loguru import logger
+                logger.debug(f"get_emotion returned status {resp.status}")
                 return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
-        except Exception:
+        except Exception as e:
+            from loguru import logger
+            logger.debug(f"get_emotion failed: {e}")
             return {"valence": 0.0, "arousal": 0.0, "quadrant": "neutral"}
 
     async def update_emotion(

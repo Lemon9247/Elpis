@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -16,6 +16,44 @@ from psyche.memory.compaction import CompactionResult, Message
 
 # Default path for local fallback storage
 DEFAULT_FALLBACK_DIR = Path.home() / ".psyche" / "fallback_memories"
+
+# Storage filtering constants
+MIN_MEMORY_LENGTH = 50  # Minimum characters for storage
+MAX_QUESTION_LENGTH = 200  # Questions longer than this may contain valuable context
+
+# Question starters that typically indicate low-value storage
+QUESTION_STARTERS = (
+    "who", "what", "where", "when", "why", "how",
+    "can", "could", "would", "should",
+    "do", "does", "did",
+    "is", "are", "was", "were", "will",
+    "have", "has", "had",
+)
+
+# Indicators of declarative/informative content (high value)
+KNOWLEDGE_INDICATORS = (
+    "I ", "My ", "I'm ", "I've ", "I'll ",
+    "You ", "Your ", "You're ", "You've ",
+    "The ", "This ", "That ", "These ", "Those ",
+    "We ", "Our ", "They ", "Their ",
+)
+
+# Patterns that indicate high-value content worth storing
+HIGH_VALUE_PATTERNS = (
+    " means ", " is defined as ", " refers to ",  # Definitions
+    " because ", " therefore ", " thus ",  # Reasoning
+    " prefer ", " like ", " enjoy ", " love ", " hate ",  # Preferences
+    " always ", " never ", " usually ",  # Behavioral patterns
+    " remember ", " forgot ", " learned ",  # Memory-related
+    " important ", " significant ", " key ",  # Importance markers
+)
+
+# Patterns indicating low-value content
+LOW_VALUE_PATTERNS = (
+    "hello", "hi ", "hey ", "thanks", "thank you",
+    "okay", "ok ", "sure", "yes", "no ", "yeah",
+    "please", "sorry", "bye", "goodbye",
+)
 
 
 @dataclass
@@ -76,17 +114,100 @@ class MemoryHandler:
             and self.mnemosyne_client.is_connected
         )
 
+    def _should_store_message(self, msg: Message) -> Tuple[bool, str]:
+        """
+        Determine if a message is worth storing as a memory.
+
+        Uses multi-factor analysis:
+        - Message length and density
+        - Question vs statement patterns
+        - High-value content indicators (definitions, preferences, reasoning)
+        - Low-value content indicators (greetings, acknowledgments)
+
+        Args:
+            msg: Message to evaluate
+
+        Returns:
+            Tuple of (should_store, memory_type)
+        """
+        content = msg.content.strip()
+        content_lower = content.lower()
+        content_len = len(content)
+
+        # Skip very short messages
+        if content_len < MIN_MEMORY_LENGTH:
+            return False, "episodic"
+
+        # Check for low-value patterns (greetings, acknowledgments)
+        if content_len < 100:  # Only check short messages
+            if any(pattern in content_lower for pattern in LOW_VALUE_PATTERNS):
+                # Unless it also contains high-value content
+                if not any(pattern in content_lower for pattern in HIGH_VALUE_PATTERNS):
+                    return False, "episodic"
+
+        # Check for high-value patterns - these always get stored as semantic
+        if any(pattern in content_lower for pattern in HIGH_VALUE_PATTERNS):
+            return True, "semantic"
+
+        # User message analysis
+        if msg.role == "user":
+            # Count question marks
+            question_count = content.count("?")
+
+            # Long messages with context before question are valuable
+            # e.g., "I'm working on X and having trouble with Y. How do I fix it?"
+            if content_len >= MAX_QUESTION_LENGTH:
+                return True, "episodic"
+
+            # Statements from user (no question mark) may contain preferences/info
+            if question_count == 0:
+                return True, "episodic"
+
+            # For questions, check if it's a simple question (low value)
+            # Simple = short + contains a question word anywhere
+            if question_count >= 1 and content_len < MAX_QUESTION_LENGTH:
+                # Check if ANY word is a question starter (not just first word)
+                # This catches "So what do you think?" and "Hmm, what is...?"
+                words = content_lower.split()
+                has_question_word = any(
+                    word.strip(",.;:!?") in QUESTION_STARTERS
+                    for word in words
+                )
+                if has_question_word:
+                    return False, "episodic"
+
+        # Assistant message analysis
+        if msg.role == "assistant":
+            # Check for knowledge indicators -> semantic memory
+            if any(indicator in content for indicator in KNOWLEDGE_INDICATORS):
+                return True, "semantic"
+
+            # Longer assistant responses are typically informative
+            if content_len >= 200:
+                return True, "semantic"
+
+            # Short responses may be acknowledgments
+            if content_len < 100:
+                return True, "episodic"
+
+        # Default: store as episodic
+        return True, "episodic"
+
     async def retrieve_relevant(
         self,
         query: str,
         n: Optional[int] = None,
+        include_emotion: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Retrieve memories relevant to query from Mnemosyne.
 
+        Uses hybrid search (BM25 + vector) with optional mood-congruent retrieval.
+
         Args:
             query: The query text (typically user input)
             n: Number of memories to retrieve (uses config default if None)
+            include_emotion: Whether to include current emotional state for mood-congruent retrieval
 
         Returns:
             List of memory dictionaries, empty if no memories found or unavailable
@@ -101,9 +222,24 @@ class MemoryHandler:
             logger.info("Memory retrieval skipped: Mnemosyne not available")
             return []
 
+        # Get current emotional context for mood-congruent retrieval
+        emotional_ctx = None
+        if include_emotion and self.elpis_client and self.elpis_client.is_connected:
+            try:
+                emotion = await self.elpis_client.get_emotion()
+                emotional_ctx = {"valence": emotion.valence, "arousal": emotion.arousal}
+                logger.debug(f"Including emotional context: v={emotion.valence:.2f}, a={emotion.arousal:.2f}")
+            except Exception as e:
+                logger.debug(f"Could not get emotional state for retrieval: {e}")
+                # Graceful degradation - search works without emotion
+
         try:
             logger.info(f"Searching memories for: {query[:50]}...")
-            memories = await self.mnemosyne_client.search_memories(query, n_results=n)
+            memories = await self.mnemosyne_client.search_memories(
+                query,
+                n_results=n,
+                emotional_context=emotional_ctx,
+            )
 
             if not memories:
                 logger.info("No relevant memories found in Mnemosyne")
@@ -175,24 +311,35 @@ class MemoryHandler:
 
         success_count = 0
         total_count = 0
+        skipped_count = 0
 
         for msg in messages:
             if msg.role == "system":
                 continue  # Skip system prompts
+
+            # Apply storage filtering
+            should_store, memory_type = self._should_store_message(msg)
+            if not should_store:
+                skipped_count += 1
+                logger.debug(f"Skipping low-quality {msg.role} message: {msg.content[:30]}...")
+                continue
 
             total_count += 1
             try:
                 await self.mnemosyne_client.store_memory(
                     content=msg.content,
                     summary=msg.content[:MEMORY_SUMMARY_LENGTH],
-                    memory_type="episodic",
-                    tags=["compacted", msg.role],
+                    memory_type=memory_type,
+                    tags=["compacted", msg.role, memory_type],
                     emotional_context=emotional_context,
                 )
                 success_count += 1
                 logger.debug(f"Stored {msg.role} message to Mnemosyne")
             except Exception as e:
                 logger.error(f"Failed to store message to Mnemosyne: {type(e).__name__}: {e}")
+
+        if skipped_count > 0:
+            logger.debug(f"Filtered out {skipped_count} low-quality messages")
 
         if total_count == 0:
             return True  # No messages to store is a success

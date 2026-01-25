@@ -137,6 +137,50 @@ class EmotionSettings(BaseSettings):
         description="Global steering strength multiplier",
     )
 
+    # Trajectory tracking thresholds
+    trajectory_history_size: int = Field(
+        default=20,
+        ge=5,
+        le=100,
+        description="Number of states to keep in trajectory history",
+    )
+    momentum_positive_threshold: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=0.5,
+        description="Valence velocity above which momentum is 'positive'",
+    )
+    momentum_negative_threshold: float = Field(
+        default=-0.01,
+        ge=-0.5,
+        le=0.0,
+        description="Valence velocity below which momentum is 'negative'",
+    )
+    trend_improving_threshold: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=0.5,
+        description="Valence velocity above which trend is 'improving'",
+    )
+    trend_declining_threshold: float = Field(
+        default=-0.02,
+        ge=-0.5,
+        le=0.0,
+        description="Valence velocity below which trend is 'declining'",
+    )
+    spiral_history_count: int = Field(
+        default=5,
+        ge=3,
+        le=20,
+        description="Number of recent states to check for spiral detection",
+    )
+    spiral_increasing_threshold: int = Field(
+        default=3,
+        ge=2,
+        le=10,
+        description="Minimum increasing distances to detect a spiral",
+    )
+
     model_config = SettingsConfigDict(env_prefix="ELPIS_EMOTION_")
 
 

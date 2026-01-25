@@ -101,7 +101,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_memories",
-            description="Search memories semantically",
+            description="Search memories with hybrid semantic + keyword matching and quality scoring",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -110,6 +110,26 @@ async def list_tools() -> List[Tool]:
                         "type": "integer",
                         "default": 10,
                         "description": "Number of results",
+                    },
+                    "use_hybrid": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Use hybrid search (BM25 + vector). Set false for pure vector search.",
+                    },
+                    "emotional_context": {
+                        "type": "object",
+                        "properties": {
+                            "valence": {"type": "number", "minimum": -1, "maximum": 1},
+                            "arousal": {"type": "number", "minimum": -1, "maximum": 1},
+                        },
+                        "description": "Current emotional state for mood-congruent retrieval",
+                    },
+                    "emotion_weight": {
+                        "type": "number",
+                        "default": 0.3,
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Weight for emotional similarity (0=ignore, 1=only emotion)",
                     },
                 },
                 "required": ["query"],
@@ -233,13 +253,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 
 async def _handle_store_memory(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle store_memory tool call."""
-    # Create emotional context if provided (with safe key access)
+    # Create emotional context if provided (with safe key access and validation)
     emotional_ctx = None
     if args.get("emotional_context"):
         ec = args["emotional_context"]
+        # Validate and clamp valence/arousal to valid range [-1, 1]
+        valence = max(-1.0, min(1.0, float(ec.get("valence", 0.0))))
+        arousal = max(-1.0, min(1.0, float(ec.get("arousal", 0.0))))
         emotional_ctx = EmotionalContext(
-            valence=ec.get("valence", 0.0),
-            arousal=ec.get("arousal", 0.0),
+            valence=valence,
+            arousal=arousal,
             quadrant=ec.get("quadrant", "neutral"),
         )
 
@@ -269,12 +292,41 @@ async def _handle_search_memories(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handle search_memories tool call."""
     query = args["query"]
     n_results = args.get("n_results", 10)
+    use_hybrid = args.get("use_hybrid", True)
+    emotion_weight = args.get("emotion_weight", 0.3)
 
-    # Run in thread pool to avoid blocking event loop
-    memories = await asyncio.to_thread(memory_store.search_memories, query, n_results)
+    # Parse emotional context if provided
+    emotional_ctx = None
+    if args.get("emotional_context"):
+        ec = args["emotional_context"]
+        # Validate and clamp valence/arousal to valid range [-1, 1]
+        valence = max(-1.0, min(1.0, float(ec.get("valence", 0.0))))
+        arousal = max(-1.0, min(1.0, float(ec.get("arousal", 0.0))))
+        emotional_ctx = EmotionalContext(
+            valence=valence,
+            arousal=arousal,
+            quadrant=ec.get("quadrant", "neutral"),
+        )
+
+    # Use hybrid search by default, fall back to basic search if requested
+    if use_hybrid:
+        memories = await asyncio.to_thread(
+            memory_store.search_memories_hybrid,
+            query,
+            n_results,
+            emotional_context=emotional_ctx,
+            emotion_weight=emotion_weight if emotional_ctx else 0.0,
+        )
+    else:
+        memories = await asyncio.to_thread(
+            memory_store.search_memories,
+            query,
+            n_results,
+        )
 
     return {
         "query": query,
+        "hybrid_search": use_hybrid,
         "results": [
             {
                 "id": m.id,
@@ -284,7 +336,7 @@ async def _handle_search_memories(args: Dict[str, Any]) -> Dict[str, Any]:
                 "tags": m.tags,
                 "emotional_context": m.emotional_context.to_dict() if m.emotional_context else None,
                 "importance_score": m.importance_score,
-                "relevance_distance": m.metadata.get("relevance_distance"),
+                "relevance_score": m.metadata.get("relevance_score"),
                 "created_at": m.created_at.isoformat(),
             }
             for m in memories
@@ -348,8 +400,8 @@ async def _handle_get_memory_context(args: Dict[str, Any]) -> Dict[str, Any]:
     query = args["query"]
     max_tokens = args.get("max_tokens", 2000)
 
-    # Search for relevant memories (run in thread pool)
-    memories = await asyncio.to_thread(memory_store.search_memories, query, 20)
+    # Search for relevant memories using hybrid search (run in thread pool)
+    memories = await asyncio.to_thread(memory_store.search_memories_hybrid, query, 20)
 
     # Format memories for context and track token usage
     formatted_memories = []
@@ -456,6 +508,7 @@ def initialize(
     memory_store = ChromaMemoryStore(
         persist_directory=persist_directory,
         settings=settings.storage,
+        retrieval_settings=settings.retrieval,
     )
     logger.info("Memory store initialized")
 

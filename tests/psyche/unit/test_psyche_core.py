@@ -379,7 +379,9 @@ class TestMemoryOperations:
         memories = await core.retrieve_memories("test query", n=5)
 
         assert len(memories) == 2
-        mnemosyne.search_memories.assert_called_once_with("test query", n_results=5)
+        mnemosyne.search_memories.assert_called_once_with(
+            "test query", n_results=5, emotional_context=None
+        )
 
     @pytest.mark.asyncio
     async def test_store_memory(self):

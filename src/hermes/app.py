@@ -218,8 +218,10 @@ class Hermes(App):
             status_display.token_usage = (
                 f"{status.get('total_tokens', 0)}/{status.get('available_tokens', 0)}"
             )
-        except Exception:
-            pass  # Ignore errors during status updates
+        except Exception as e:
+            # Log error instead of silently ignoring
+            from loguru import logger
+            logger.debug(f"Failed to update emotional display: {e}")
 
     async def on_user_submitted(self, message: UserSubmitted) -> None:
         """Handle user input submission."""

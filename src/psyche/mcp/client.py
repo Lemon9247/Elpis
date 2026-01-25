@@ -17,6 +17,32 @@ from mnemosyne.core.constants import (
 
 
 @dataclass
+class EmotionalTrajectory:
+    """Emotional momentum over recent history."""
+
+    valence_velocity: float = 0.0  # Rate of change per minute
+    arousal_velocity: float = 0.0
+    trend: str = "stable"  # "improving", "declining", "stable", "oscillating"
+    spiral_detected: bool = False
+    time_in_quadrant: float = 0.0  # Seconds
+    momentum: str = "neutral"  # "positive", "negative", "neutral"
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EmotionalTrajectory":
+        """Create from dictionary returned by server."""
+        if not data:
+            return cls()
+        return cls(
+            valence_velocity=data.get("valence_velocity", 0.0),
+            arousal_velocity=data.get("arousal_velocity", 0.0),
+            trend=data.get("trend", "stable"),
+            spiral_detected=data.get("spiral_detected", False),
+            time_in_quadrant=data.get("time_in_quadrant", 0.0),
+            momentum=data.get("momentum", "neutral"),
+        )
+
+
+@dataclass
 class EmotionalState:
     """Representation of the inference server's emotional state."""
 
@@ -24,15 +50,20 @@ class EmotionalState:
     arousal: float = 0.0
     quadrant: str = "neutral"
     update_count: int = 0
+    trajectory: Optional[EmotionalTrajectory] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EmotionalState":
         """Create from dictionary returned by server."""
+        trajectory = None
+        if data.get("trajectory"):
+            trajectory = EmotionalTrajectory.from_dict(data["trajectory"])
         return cls(
             valence=data.get("valence", 0.0),
             arousal=data.get("arousal", 0.0),
             quadrant=data.get("quadrant", "neutral"),
             update_count=data.get("update_count", 0),
+            trajectory=trajectory,
         )
 
 
@@ -579,21 +610,33 @@ class MnemosyneClient:
         self,
         query: str,
         n_results: int = 10,
+        use_hybrid: bool = True,
+        emotional_context: Optional[Dict[str, float]] = None,
+        emotion_weight: float = 0.3,
     ) -> List[Dict[str, Any]]:
         """
-        Search memories by semantic similarity.
+        Search memories with hybrid semantic + keyword matching.
 
         Args:
             query: Search query
             n_results: Number of results to return
+            use_hybrid: Use hybrid search (BM25 + vector). Set False for pure vector.
+            emotional_context: Optional dict with valence/arousal for mood-congruent retrieval
+            emotion_weight: Weight for emotional similarity (0-1, default 0.3)
 
         Returns:
             List of matching memories
         """
-        result = await self._call_tool("search_memories", {
+        arguments: Dict[str, Any] = {
             "query": query,
             "n_results": n_results,
-        })
+            "use_hybrid": use_hybrid,
+        }
+        if emotional_context:
+            arguments["emotional_context"] = emotional_context
+            arguments["emotion_weight"] = emotion_weight
+
+        result = await self._call_tool("search_memories", arguments)
         return result.get("results", [])
 
     async def get_memory_stats(self) -> Dict[str, int]:

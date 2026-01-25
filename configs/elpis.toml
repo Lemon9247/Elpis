@@ -50,6 +50,15 @@ max_delta = 0.5
 # Global steering strength multiplier (0.0-3.0)
 steering_strength = 1.0
 
+# Trajectory tracking configuration
+trajectory_history_size = 20        # States to keep in history
+momentum_positive_threshold = 0.01  # Velocity above which momentum is "positive"
+momentum_negative_threshold = -0.01 # Velocity below which momentum is "negative"
+trend_improving_threshold = 0.02    # Velocity above which trend is "improving"
+trend_declining_threshold = -0.02   # Velocity below which trend is "declining"
+spiral_history_count = 5            # Recent states to check for spiral
+spiral_increasing_threshold = 3     # Minimum increasing distances for spiral
+
 [logging]
 # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 level = "INFO"
