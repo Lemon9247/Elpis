@@ -85,6 +85,40 @@ These settings control the emotional regulation system.
      - ``1.0``
      - Global steering strength multiplier
 
+Trajectory Settings
+^^^^^^^^^^^^^^^^^^^
+
+These settings control emotional trajectory tracking and pattern detection.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 10 50
+
+   * - Variable
+     - Default
+     - Description
+   * - ``ELPIS_EMOTION_TRAJECTORY_HISTORY_SIZE``
+     - ``20``
+     - Number of emotional states to retain for trajectory analysis
+   * - ``ELPIS_EMOTION_MOMENTUM_POSITIVE_THRESHOLD``
+     - ``0.01``
+     - Valence velocity threshold for positive momentum classification
+   * - ``ELPIS_EMOTION_MOMENTUM_NEGATIVE_THRESHOLD``
+     - ``-0.01``
+     - Valence velocity threshold for negative momentum classification
+   * - ``ELPIS_EMOTION_TREND_IMPROVING_THRESHOLD``
+     - ``0.02``
+     - Valence velocity threshold for "improving" trend
+   * - ``ELPIS_EMOTION_TREND_DECLINING_THRESHOLD``
+     - ``-0.02``
+     - Valence velocity threshold for "declining" trend
+   * - ``ELPIS_EMOTION_SPIRAL_HISTORY_COUNT``
+     - ``5``
+     - Number of recent states to check for spiral detection
+   * - ``ELPIS_EMOTION_SPIRAL_INCREASING_THRESHOLD``
+     - ``3``
+     - Consecutive distance increases needed to detect a spiral
+
 Logging Settings
 ^^^^^^^^^^^^^^^^
 

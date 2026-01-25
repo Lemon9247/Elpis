@@ -94,6 +94,14 @@ The system uses homeostatic regulation with decay toward baseline, responding to
 - `frustration` - Negative valence, high arousal
 - `idle` - Gradual arousal decrease
 
+### Trajectory Tracking
+
+Beyond raw valence-arousal values, Elpis tracks emotional momentum:
+- **Velocity**: Rate of change per minute for valence and arousal
+- **Trend**: "improving", "declining", "stable", or "oscillating"
+- **Spiral Detection**: Alerts when emotional state spirals away from baseline
+- **Momentum**: Overall classification ("positive", "negative", "neutral")
+
 ## Installation
 
 ### Requirements
@@ -106,8 +114,8 @@ The system uses homeostatic regulation with decay toward baseline, responding to
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/elpis.git
-cd elpis
+git clone https://github.com/Lemon9247/Elpis.git
+cd Elpis
 ```
 
 2. **Set up virtual environment**

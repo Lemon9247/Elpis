@@ -19,8 +19,8 @@ Basic Installation
 
    .. code-block:: bash
 
-      git clone https://github.com/yourusername/elpis.git
-      cd elpis
+      git clone https://github.com/Lemon9247/Elpis.git
+      cd Elpis
 
 2. Create and activate a virtual environment:
 
@@ -35,7 +35,7 @@ Basic Installation
 
       pip install -e .
 
-This installs all three components (elpis, mnemosyne, psyche) with their
+This installs all four components (elpis, mnemosyne, psyche, hermes) with their
 core dependencies.
 
 GPU Support
@@ -150,6 +150,7 @@ Verify the installation by checking that the CLI commands are available:
    elpis-server --help
    mnemosyne-server --help
    psyche-server --help
+   hermes --help
 
 Run the test suite to ensure everything is working:
 

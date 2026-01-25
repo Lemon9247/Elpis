@@ -120,11 +120,14 @@ Embedding Process
    # Simplified embedding process
    embedding = self.embedding_model.encode(memory.content).tolist()
 
-Semantic Search Mechanics
--------------------------
+Search Mechanisms
+-----------------
 
-Query Processing
-^^^^^^^^^^^^^^^^
+Mnemosyne supports two search modes: basic vector search and hybrid search
+combining vector similarity with BM25 keyword matching.
+
+Basic Vector Search
+^^^^^^^^^^^^^^^^^^^
 
 When a search query is received:
 
@@ -141,12 +144,74 @@ When a search query is received:
 
 .. code-block:: python
 
-   # Search process
+   # Basic vector search
    query_embedding = self.embedding_model.encode(query).tolist()
    results = collection.query(
        query_embeddings=[query_embedding],
        n_results=n_results,
    )
+
+Hybrid Search (Vector + BM25)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Hybrid search combines semantic vector search with BM25 keyword matching using
+Reciprocal Rank Fusion (RRF). This approach improves retrieval quality by:
+
+- Capturing semantic similarity (vector) for conceptually related content
+- Capturing exact keyword matches (BM25) for specific terms
+
+**BM25 Index**
+
+Mnemosyne maintains a lazy-built BM25 index from ``rank-bm25``:
+
+- Index rebuilds automatically when marked dirty (after add/delete operations)
+- Tokenization with stop word removal for better relevance
+- Lazy initialization defers work until first search
+
+**Reciprocal Rank Fusion**
+
+RRF combines the two ranking lists using the formula:
+
+.. code-block:: text
+
+   RRF_score = sum(weight / (k + rank)) for each ranking list
+
+Where ``k=60`` (standard RRF constant), and weights default to 0.5 each.
+
+**Hybrid Search Process**
+
+1. Embed query and run vector search
+2. Run BM25 keyword search (if available)
+3. Combine rankings with RRF
+4. Optionally apply quality scoring (recency, importance, access count)
+5. Optionally apply emotional similarity reranking
+6. Return top N results
+
+.. code-block:: python
+
+   # Hybrid search with quality scoring
+   memories = store.search_memories_hybrid(
+       query="user interface preferences",
+       n_results=10,
+       vector_weight=0.5,
+       bm25_weight=0.5,
+       use_quality_scoring=True,
+       emotional_context=current_emotion,
+       emotion_weight=0.3,
+   )
+
+**Quality Scoring Factors**
+
+When ``use_quality_scoring=True``, results are reranked by:
+
+- **Recency**: More recently accessed memories score higher
+- **Importance**: Higher importance_score increases ranking
+- **Access frequency**: Frequently accessed memories score higher
+
+**Emotional Reranking**
+
+When ``emotional_context`` is provided, memories with similar emotional
+states are boosted. This implements mood-congruent memory retrieval.
 
 Distance Metrics
 ^^^^^^^^^^^^^^^^

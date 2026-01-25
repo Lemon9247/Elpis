@@ -27,6 +27,11 @@ Key Features
     Uses ChromaDB for efficient vector storage and retrieval. Memories are automatically
     embedded using the ``all-MiniLM-L6-v2`` model from SentenceTransformers.
 
+**Hybrid Search**
+    Combines vector similarity with BM25 keyword matching using Reciprocal Rank
+    Fusion (RRF). Quality scoring factors in recency, importance, and access frequency.
+    Optional emotional reranking for mood-congruent retrieval.
+
 **Memory Types**
     Supports four memory types modeled after human cognition:
 
@@ -132,5 +137,6 @@ See Also
 --------
 
 - :doc:`/elpis/index` - Inference server with emotional modulation
-- :doc:`/psyche/index` - TUI client for interacting with the system
+- :doc:`/psyche/index` - Core server for coordination
+- :doc:`/hermes/index` - TUI client for interacting with the system
 - :doc:`/getting-started/installation` - Installation guide

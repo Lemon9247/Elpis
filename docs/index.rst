@@ -35,12 +35,32 @@ Features
 Architecture
 ------------
 
-Psyche runs as a persistent HTTP server with an OpenAI-compatible API. It spawns
-Elpis (inference) and Mnemosyne (memory) as MCP subprocesses and manages context,
-memory retrieval, and dreaming.
+The system uses a server-client architecture:
 
-Hermes (or other HTTP clients) connects to the Psyche server. Memory tools execute
-server-side while file/bash/search tools execute client-side on Hermes.
+- **Psyche** runs as a persistent HTTP server with an OpenAI-compatible API
+- **Elpis** and **Mnemosyne** run as MCP subprocesses spawned by Psyche
+- **Hermes** (or any HTTP client) connects to the Psyche server
+
+.. code-block:: text
+
+    +---------------------------+
+    |     PSYCHE SERVER         |
+    |  +-------+  +---------+   |
+    |  | Elpis |  | Mnemosyne|  |
+    |  | (MCP) |  |  (MCP)  |   |
+    |  +-------+  +---------+   |
+    +-------------|-------------+
+                  | HTTP API
+           +------+------+
+           |             |
+        Hermes       External
+         (TUI)        Clients
+
+Memory tools execute server-side (as part of the AI's "self"), while
+file/bash/search tools execute client-side on Hermes. The server dreams
+(memory-based introspection) when no clients are connected.
+
+See :doc:`architecture` for comprehensive architectural documentation.
 
 Getting Started
 ---------------
@@ -52,6 +72,7 @@ New to Elpis? Start here:
    :caption: Getting Started
 
    getting-started/index
+   architecture
 
 Package Documentation
 ---------------------

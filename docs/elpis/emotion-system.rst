@@ -270,6 +270,67 @@ expression:
 - ``steering_strength=1.0``: Normal expression
 - ``steering_strength>1.0``: Exaggerated expression (use carefully)
 
+Emotional Trajectory Tracking
+-----------------------------
+
+Beyond raw valence-arousal values, Elpis tracks emotional momentum and patterns
+over time. This enables richer personality modeling and early detection of
+concerning states like emotional spirals.
+
+Trajectory Components
+^^^^^^^^^^^^^^^^^^^^^
+
+The :class:`~elpis.emotion.state.EmotionalTrajectory` dataclass captures:
+
+**Velocity** (rate of change per minute)
+    - ``valence_velocity``: Positive = improving, negative = declining
+    - ``arousal_velocity``: Positive = energizing, negative = calming
+
+**Trend Detection**
+    - ``improving``: Sustained positive valence movement
+    - ``declining``: Sustained negative valence movement
+    - ``stable``: Little change in valence
+    - ``oscillating``: Alternating direction changes
+
+**Spiral Detection**
+    Detects sustained movement away from baseline with direction awareness:
+
+    - ``positive``: Spiraling toward high valence states
+    - ``negative``: Spiraling toward low valence states
+    - ``escalating``: Spiraling toward high arousal
+    - ``withdrawing``: Spiraling toward low arousal
+
+**Additional Metrics**
+    - ``time_in_current_quadrant``: Seconds in current emotional quadrant
+    - ``momentum``: Overall classification ("positive", "negative", "neutral")
+
+Trajectory Configuration
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Trajectory detection thresholds can be configured:
+
+.. code-block:: python
+
+    from elpis.emotion.state import TrajectoryConfig
+
+    config = TrajectoryConfig(
+        history_size=20,                    # States to retain for analysis
+        momentum_positive_threshold=0.01,   # Velocity threshold for positive momentum
+        momentum_negative_threshold=-0.01,  # Velocity threshold for negative momentum
+        trend_improving_threshold=0.02,     # Velocity threshold for improving trend
+        trend_declining_threshold=-0.02,    # Velocity threshold for declining trend
+        spiral_history_count=5,             # States to check for spiral
+        spiral_increasing_threshold=3,      # Consecutive increases to detect spiral
+    )
+
+Or via environment variables:
+
+.. code-block:: bash
+
+    ELPIS_EMOTION_TRAJECTORY_HISTORY_SIZE=20
+    ELPIS_EMOTION_MOMENTUM_POSITIVE_THRESHOLD=0.01
+    ELPIS_EMOTION_SPIRAL_HISTORY_COUNT=5
+
 Monitoring Emotional State
 --------------------------
 
@@ -299,6 +360,15 @@ The current emotional state can be retrieved via MCP:
             "frustrated": 0.24,
             "calm": 0.26,
             "depleted": 0.19
+        },
+        "trajectory": {
+            "valence_velocity": 0.05,
+            "arousal_velocity": 0.02,
+            "trend": "improving",
+            "spiral_detected": false,
+            "spiral_direction": "none",
+            "time_in_quadrant": 45.2,
+            "momentum": "positive"
         }
     }
 

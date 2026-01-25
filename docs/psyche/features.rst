@@ -93,24 +93,24 @@ Valence-Arousal Model
 The emotional state is represented by two dimensions:
 
 - **Valence** [-1, 1]: Negative to positive affect
-- **Arousal** [0, 1]: Low to high activation/energy
+- **Arousal** [-1, 1]: Low to high activation/energy
 
 Quadrants
 ^^^^^^^^^
 
 The emotional space is divided into four quadrants:
 
-+------------+--------------------+----------------------+
-| Quadrant   | Valence            | Arousal              |
-+============+====================+======================+
-| Excited    | Positive (> 0)     | High (> 0.5)         |
-+------------+--------------------+----------------------+
-| Calm       | Positive (> 0)     | Low (<= 0.5)         |
-+------------+--------------------+----------------------+
-| Frustrated | Negative (<= 0)    | High (> 0.5)         |
-+------------+--------------------+----------------------+
-| Depleted   | Negative (<= 0)    | Low (<= 0.5)         |
-+------------+--------------------+----------------------+
++------------+--------------------+-----------------------+
+| Quadrant   | Valence            | Arousal               |
++============+====================+=======================+
+| Excited    | Positive (>= 0)    | High (>= 0)           |
++------------+--------------------+-----------------------+
+| Calm       | Positive (>= 0)    | Low (< 0)             |
++------------+--------------------+-----------------------+
+| Frustrated | Negative (< 0)     | High (>= 0)           |
++------------+--------------------+-----------------------+
+| Depleted   | Negative (< 0)     | Low (< 0)             |
++------------+--------------------+-----------------------+
 
 Visual Display
 ^^^^^^^^^^^^^^
@@ -130,6 +130,17 @@ Color coding indicates the current quadrant:
 - **Calm**: Blue
 - **Frustrated**: Red
 - **Depleted**: Dim/gray
+
+Trajectory Tracking
+^^^^^^^^^^^^^^^^^^^
+
+Beyond raw values, Psyche displays trajectory information from Elpis:
+
+- **Momentum**: "positive", "negative", or "neutral" based on valence velocity
+- **Trend**: "improving", "declining", "stable", or "oscillating"
+- **Spiral detection**: Alerts when emotional state spirals away from baseline
+
+See :doc:`/elpis/emotion-system` for detailed trajectory documentation.
 
 Memory Consolidation
 --------------------
@@ -162,13 +173,13 @@ CLI Options
 .. code-block:: bash
 
     # Default (with consolidation enabled)
-    psyche
+    psyche-server
 
     # Disable consolidation
-    psyche --no-consolidation
+    psyche-server --no-consolidation
 
     # Custom Mnemosyne command
-    psyche --mnemosyne-command "mnemosyne-server --persist-dir ./my-memories"
+    psyche-server --mnemosyne-command "mnemosyne-server --persist-dir ./my-memories"
 
 MnemosyneClient
 ^^^^^^^^^^^^^^^
@@ -202,6 +213,48 @@ The ``MnemosyneClient`` class provides the interface to Mnemosyne:
 
         # Search memories
         results = await client.search_memories("user preferences", n_results=5)
+
+Dreaming
+--------
+
+When no clients are connected, the DreamHandler activates for memory-based introspection.
+
+Dream Intentions
+^^^^^^^^^^^^^^^^
+
+Dreams are guided by the current emotional quadrant:
+
++------------+-----------------------------------+
+| Quadrant   | Dream Intention                   |
++============+===================================+
+| Frustrated | Seek resolution patterns          |
++------------+-----------------------------------+
+| Depleted   | Seek restoration (joy, meaning)   |
++------------+-----------------------------------+
+| Excited    | Seek exploration (curiosity)      |
++------------+-----------------------------------+
+| Calm       | Seek synthesis (patterns)         |
++------------+-----------------------------------+
+
+Dream Process
+^^^^^^^^^^^^^
+
+1. Select dream intention based on emotional state
+2. Retrieve random memories matching the intention
+3. Generate introspective response
+4. Potentially store insights as new semantic memories
+5. Trigger memory consolidation if buffer is full
+
+Configuration
+^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    ServerConfig(
+        dream_interval=300.0,        # Dream every 5 minutes when idle
+        dream_memory_count=3,        # Memories to include in dream context
+        enable_dream_storage=True,   # Store dream insights as memories
+    )
 
 Context Management
 ------------------

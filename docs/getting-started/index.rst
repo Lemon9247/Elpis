@@ -3,11 +3,12 @@ Getting Started
 
 This section will help you get up and running with the Elpis ecosystem.
 
-The Elpis project consists of three main components:
+The Elpis project consists of four main components:
 
-- **elpis-server** - The inference MCP server with emotional modulation
-- **mnemosyne-server** - The memory MCP server with ChromaDB storage
-- **psyche** - The TUI client for interacting with the system
+- **Elpis** - Inference MCP server with emotional modulation via valence-arousal model
+- **Mnemosyne** - Memory MCP server with ChromaDB backend and short/long-term consolidation
+- **Psyche** - Core server coordinating memory, inference, and dreaming with an OpenAI-compatible API
+- **Hermes** - TUI (Terminal User Interface) client that connects to Psyche and executes tools locally
 
 Contents
 --------
@@ -21,15 +22,17 @@ Contents
 Overview
 --------
 
-Elpis uses the Model Context Protocol (MCP) to provide a modular architecture
-where different components can be combined as needed:
+Elpis uses a server-client architecture with the Model Context Protocol (MCP) for
+internal component communication:
 
-- Run the inference server standalone for emotional LLM generation
-- Add the memory server for persistent context across sessions
-- Use the Psyche client for a complete interactive experience
+- **Psyche server** manages context, memory, and emotional state, spawning Elpis and
+  Mnemosyne as MCP subprocesses
+- **Hermes** (or any HTTP client) connects to Psyche's OpenAI-compatible API
+- Memory tools execute server-side while file/bash/search tools execute client-side
+- The server dreams (memory-based introspection) when no clients are connected
 
-The emotional regulation system uses a valence-arousal model to modulate
-LLM generation, creating more nuanced and contextually appropriate responses.
+The emotional regulation system uses a valence-arousal model with trajectory tracking
+to modulate LLM generation, creating more nuanced and contextually appropriate responses.
 
 Project Structure
 -----------------
@@ -38,18 +41,29 @@ Project Structure
 
    src/
      elpis/           # Inference MCP server
-      - config/        # Settings management
-      - emotion/       # Valence-arousal state and regulation
-      - llm/           # Inference backends (llama-cpp, transformers)
-      - server.py      # MCP server entry point
+       config/        # Settings management (Pydantic)
+       emotion/       # Valence-arousal state, trajectory, and regulation
+       llm/           # Inference backends
+         backends/    # llama-cpp and transformers implementations
+         base.py      # InferenceEngine abstract base class
+       server.py      # MCP server entry point
 
      mnemosyne/       # Memory MCP server
-      - core/          # Memory models and consolidator
-      - storage/       # ChromaDB storage backend
-      - server.py      # MCP server entry point
+       core/          # Memory models and consolidator
+         models.py    # Memory, MemoryType, MemoryStatus
+         consolidator.py  # Clustering-based consolidation
+       storage/       # ChromaDB storage backend with hybrid search
+       server.py      # MCP server entry point
 
-     psyche/          # TUI client
-      - client/        # Textual TUI components
-      - memory/        # Inference server with consolidation
-      - tools/         # Tool definitions and implementations
-      - mcp/           # MCP clients for Elpis and Mnemosyne
+     psyche/          # Core server
+       core/          # PsycheCore, ContextManager, MemoryHandler
+       server/        # PsycheDaemon, PsycheHTTPServer
+       handlers/      # ReactHandler, IdleHandler, DreamHandler
+       mcp/           # ElpisClient, MnemosyneClient
+       memory/        # Importance scoring, reasoning extraction
+
+     hermes/          # TUI client
+       app.py         # Main Textual application
+       widgets/       # ChatView, UserInput, Sidebar, ThoughtPanel
+       tools/         # ToolEngine for local tool execution
+       handlers/      # RemotePsycheClient for HTTP connection
