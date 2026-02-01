@@ -80,3 +80,7 @@ configs/config.local.toml
 
 # Private Claude context (not for GitHub)
 claude.local.md
+
+# Scratchpad (symlink to shared Obsidian vault)
+/scratchpad
+/.scratchpad
