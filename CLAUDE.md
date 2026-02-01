@@ -54,7 +54,7 @@ Elpis/
 │   └── train_emotion_vectors.py  # Train steering vectors
 ├── configs/                    # Configuration templates
 ├── data/                       # Data files (models, vectors)
-├── scratchpad/                 # Working notes and session logs
+├── scratchpad/                 # Symlink to shared Obsidian vault (see ~/.claude/CLAUDE.md)
 │   ├── reports/                # Session reports
 │   ├── plans/                  # Work plans and architecture documents
 │   ├── ideas/                  # Feature ideas and improvement proposals
@@ -84,7 +84,7 @@ a package into the venv, you should use uv pip install
 
 # Work Planning
 
-1) All project notes, work logs and reports can be found in the scratchpad folder
+1) The **shared scratchpad** is a symlink into a shared Obsidian vault. All project notes, work logs and reports live there. See `~/.claude/CLAUDE.md` for vault details. To commit: `cd scratchpad && git add . && git commit -m "message" && git push && cd ..`
 
 2) When Claude first starts, it should review the latest work on the project by reviewing the git history and anything recent in the scratchpad
 
