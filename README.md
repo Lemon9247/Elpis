@@ -52,13 +52,13 @@ The system consists of four components:
 - **DreamHandler** - Memory-based introspection when no clients are connected
 - **RemotePsycheClient** - HTTP client in Hermes for connecting to the server
 
-### Memory Consolidation
+### Memory System
 
-Mnemosyne implements biologically-inspired memory consolidation:
-- **Short-term memory**: Recent memories awaiting consolidation
-- **Long-term memory**: Important memories promoted after clustering
-- **Clustering**: Groups semantically similar memories using cosine similarity
-- **Automatic consolidation**: Psyche triggers consolidation during idle periods
+Mnemosyne provides semantic memory with:
+- **Short/long-term consolidation**: Important memories promoted via clustering
+- **Hybrid search**: BM25 + vector embeddings with Reciprocal Rank Fusion
+- **Quality scoring**: Recency, importance, content length weighting
+- **Mood-congruent retrieval**: Boost memories matching current emotional state
 
 ## Emotional Regulation System
 
@@ -87,20 +87,17 @@ Elpis supports two methods of emotional modulation:
 
 ### Homeostatic Regulation
 
-The system uses homeostatic regulation with decay toward baseline, responding to events like:
-- `success` - Positive valence, slight arousal increase
-- `failure` - Negative valence, arousal increase
-- `novelty` - Positive valence, arousal increase
-- `frustration` - Negative valence, high arousal
-- `idle` - Gradual arousal decrease
+The system uses homeostatic regulation with decay toward baseline. Events shift emotional state (success, failure, novelty, frustration, idle), with context-aware dynamics:
 
-### Trajectory Tracking
+- **Event compounding/dampening**: Repeated events adjust intensity
+- **Mood inertia**: Resistance to rapid emotional swings
+- **Quadrant-specific decay**: Frustration persists longer, calm fades faster
+- **Behavioral monitoring**: Detects retry loops and failure streaks
+- **Trajectory tracking**: Velocity, trend, spiral detection, momentum
 
-Beyond raw valence-arousal values, Elpis tracks emotional momentum:
-- **Velocity**: Rate of change per minute for valence and arousal
-- **Trend**: "improving", "declining", "stable", or "oscillating"
-- **Spiral Detection**: Alerts when emotional state spirals away from baseline
-- **Momentum**: Overall classification ("positive", "negative", "neutral")
+### Emotion-Shaped Dreaming
+
+Psyche uses emotional state to guide dream content during idle periods - frustrated states trigger resolution dreams, depleted states trigger restoration dreams, etc.
 
 ## Installation
 
@@ -329,16 +326,10 @@ mypy src/elpis
 - [x] Phase 2: MCP servers (inference, memory, tools, emotional regulation)
 - [x] Phase 3: Long-term memory consolidation with clustering
 - [x] Phase 4: Architecture refactor to server/client model
-- [ ] Future: Memory retrieval quality
-  - [ ] Hybrid search (BM25 + vector with RRF fusion)
-  - [ ] Storage-side filtering (skip questions, min length)
-  - [ ] Quality-weighted ranking (recency, importance, type)
-  - [ ] Memory cleanup tools
-- [ ] Future: Emotional system enhancements
-  - [ ] More nuanced emotion mapping
-  - [ ] Event history and emotional momentum
-  - [ ] Personality profiles with baseline presets
-- [ ] Future: Advanced memory (graph-based, cross-encoder reranking)
+- [x] Phase 5: Dynamic emotion updates (compounding, inertia, behavioral monitoring)
+- [x] Phase 6: Emotional depth (trajectory tracking, emotion-shaped dreaming)
+- [x] Phase 7: Memory retrieval quality (hybrid search, quality scoring)
+- [ ] Future: Personality profiles, memory cleanup, extended emotional model (PAD)
 
 ## Author and License
 
